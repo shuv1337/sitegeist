@@ -1,15 +1,344 @@
 import { html, type TemplateResult } from "@mariozechner/mini-lit";
 import type { AgentTool, ToolResultMessage } from "@mariozechner/pi-ai";
-import { type Attachment, registerToolRenderer, type ToolRenderer } from "@mariozechner/pi-web-ui";
+import { type Attachment, i18n, registerToolRenderer, renderHeader, type ToolRenderer } from "@mariozechner/pi-web-ui";
 import { type Static, Type } from "@sinclair/typebox";
 import "@mariozechner/pi-web-ui"; // Ensure all components are registered
+import { Globe } from "lucide";
+import { getSitegeistStorage } from "../storage/app-storage.js";
 
 // Cross-browser API compatibility
 // @ts-expect-error - browser global exists in Firefox, chrome in Chrome
 const browser = globalThis.browser || globalThis.chrome;
 
+/**
+ * Check and request userScripts permission.
+ * Must be called from a user gesture (e.g., button click) in Firefox.
+ * IMPORTANT: In Firefox, browser.permissions.request() must be called synchronously
+ * (without any await before it) to preserve the user gesture context.
+ */
+export async function requestUserScriptsPermission(): Promise<{ granted: boolean; message?: string }> {
+	const chromeVersion = Number(navigator.userAgent.match(/(Chrome|Chromium)\/([0-9]+)/)?.[2]);
+	const isChrome = chromeVersion > 0;
+	const isFirefox = !isChrome;
+
+	// Check if API is already available
+	if (browser.userScripts) {
+		return { granted: true };
+	}
+
+	// Firefox: Request userScripts permission
+	if (isFirefox && browser.permissions) {
+		try {
+			// CRITICAL: Call request() synchronously (no await before it) to preserve user gesture context!
+			// Any async operation before this call will break the user gesture chain.
+			const grantedPromise = browser.permissions.request({ permissions: ["userScripts"] });
+
+			// Now we can await the promise result
+			const granted = await grantedPromise;
+			if (granted) {
+				return { granted: true, message: "Permission granted. If the tool still doesn't work, please reload the extension." };
+			} else {
+				return { granted: false, message: "userScripts permission denied. The browser_javascript tool requires this permission to execute code safely." };
+			}
+		} catch (error) {
+			console.error("Failed to request userScripts permission:", error);
+			return { granted: false, message: `Failed to request permission: ${error}` };
+		}
+	}
+
+	// Chrome: userScripts not available
+	if (isChrome) {
+		if (chromeVersion >= 138) {
+			return {
+				granted: false,
+				message: `Chrome ${chromeVersion} detected. To enable User Scripts:\n\n1. Go to chrome://extensions/\n2. Find this extension and click 'Details'\n3. Enable the 'Allow User Scripts' toggle\n4. Refresh the page and try again`
+			};
+		} else if (chromeVersion >= 120) {
+			return {
+				granted: false,
+				message: `Chrome ${chromeVersion} detected. The userScripts API requires Chrome 120+ with experimental features enabled.`
+			};
+		} else {
+			return {
+				granted: false,
+				message: `Chrome ${chromeVersion} detected. The userScripts API requires Chrome 120 or higher. Please update Chrome.`
+			};
+		}
+	}
+
+	return { granted: false, message: "userScripts API not available in this browser." };
+}
+
+// Security safeguards function - will be converted to string with .toString()
+function securitySafeguards() {
+	// Lock down access to sensitive APIs by deleting them from window
+	delete (window as any).localStorage;
+	delete (window as any).sessionStorage;
+	delete (window as any).indexedDB;
+	delete (window as any).fetch;
+	delete (window as any).XMLHttpRequest;
+	delete (window as any).WebSocket;
+	delete (window as any).EventSource;
+	delete (window as any).caches;
+	delete (window as any).cookieStore;
+
+	// Block WebRTC for network exfiltration prevention
+	delete (window as any).RTCPeerConnection;
+	delete (window as any).RTCDataChannel;
+	delete (window as any).RTCSessionDescription;
+	delete (window as any).RTCIceCandidate;
+	delete (window as any).webkitRTCPeerConnection;
+
+	// CRITICAL: Block iframe and window creation to prevent API bypass via iframe.contentWindow
+	const blockedError = () => {
+		throw new Error("Creating new browsing contexts is blocked for security");
+	};
+	delete (window as any).HTMLIFrameElement;
+	delete (window as any).HTMLFrameElement;
+	delete (window as any).HTMLObjectElement;
+	delete (window as any).HTMLEmbedElement;
+	(window as any).open = blockedError;
+	(window as any).showModalDialog = blockedError;
+
+	// Block document.createElement for iframes, frames, objects, embeds
+	const originalCreateElement = document.createElement.bind(document);
+	document.createElement = function (tagName: string, options?: any) {
+		const tag = tagName.toLowerCase();
+		if (tag === "iframe" || tag === "frame" || tag === "object" || tag === "embed") {
+			throw new Error("Creating " + tag + " elements is blocked for security");
+		}
+		return originalCreateElement(tagName, options);
+	} as any;
+
+	// Block createElementNS (for SVG/XML iframes)
+	const originalCreateElementNS = document.createElementNS.bind(document);
+	document.createElementNS = function (namespaceURI: string, qualifiedName: string, options?: any) {
+		const tag = qualifiedName.toLowerCase();
+		if (tag === "iframe" || tag === "frame" || tag === "object" || tag === "embed") {
+			throw new Error("Creating " + tag + " elements is blocked for security");
+		}
+		return originalCreateElementNS(namespaceURI, qualifiedName, options);
+	} as any;
+
+	// Block innerHTML/outerHTML that could inject iframes
+	const blockIframeHTML = (value: string) => {
+		if (typeof value === "string" && /<i?frame|<object|<embed/i.test(value)) {
+			throw new Error("HTML containing iframe/frame/object/embed is blocked for security");
+		}
+		return value;
+	};
+
+	// Override Element.prototype.innerHTML setter
+	const originalInnerHTMLDesc = Object.getOwnPropertyDescriptor(Element.prototype, "innerHTML")!;
+	Object.defineProperty(Element.prototype, "innerHTML", {
+		set: function (value: string) {
+			blockIframeHTML(value);
+			originalInnerHTMLDesc.set!.call(this, value);
+		},
+		get: originalInnerHTMLDesc.get,
+	});
+
+	// Override Element.prototype.outerHTML setter
+	const originalOuterHTMLDesc = Object.getOwnPropertyDescriptor(Element.prototype, "outerHTML")!;
+	Object.defineProperty(Element.prototype, "outerHTML", {
+		set: function (value: string) {
+			blockIframeHTML(value);
+			originalOuterHTMLDesc.set!.call(this, value);
+		},
+		get: originalOuterHTMLDesc.get,
+	});
+
+	// Block insertAdjacentHTML
+	const originalInsertAdjacentHTML = Element.prototype.insertAdjacentHTML;
+	Element.prototype.insertAdjacentHTML = function (position: InsertPosition, html: string) {
+		blockIframeHTML(html);
+		return originalInsertAdjacentHTML.call(this, position, html);
+	};
+
+	// Block document.write/writeln which could inject iframes
+	(document as any).write = blockedError;
+	(document as any).writeln = blockedError;
+
+	// CRITICAL: Block modification of existing iframe src to prevent exfiltration via navigation
+	try {
+		const existingIframes = document.querySelectorAll("iframe, frame, object, embed");
+		existingIframes.forEach((element) => {
+			try {
+				// Make src property read-only
+				Object.defineProperty(element, "src", {
+					get: function () {
+						return this.getAttribute("src");
+					},
+					set: function () {
+						throw new Error("Modifying iframe/frame/object/embed src is blocked for security");
+					},
+					configurable: false,
+				});
+
+				// Also block setAttribute for src
+				const originalSetAttribute = element.setAttribute.bind(element);
+				element.setAttribute = function (name: string, value: string) {
+					if (name.toLowerCase() === "src") {
+						throw new Error("Modifying iframe/frame/object/embed src is blocked for security");
+					}
+					return originalSetAttribute(name, value);
+				};
+			} catch (e) {
+				// Ignore errors for individual elements (may be cross-origin or protected)
+			}
+		});
+	} catch (e) {
+		// Ignore if querySelectorAll fails
+	}
+
+	// Also block document.cookie access
+	Object.defineProperty(document, "cookie", {
+		get: () => {
+			throw new Error("Access to document.cookie is blocked for security");
+		},
+		set: () => {
+			throw new Error("Access to document.cookie is blocked for security");
+		},
+	});
+}
+
+// Wrapper function that executes user code - will be converted to string with .toString()
+async function wrapperFunction() {
+	// Capture console output
+	const consoleOutput: Array<{ type: string; args: unknown[] }> = [];
+	const files: Array<{ fileName: string; content: string | Uint8Array; mimeType: string }> = [];
+	let timeoutId: number;
+
+	const originalConsole = {
+		log: console.log,
+		warn: console.warn,
+		error: console.error,
+	};
+
+	// Override console methods to capture output
+	console.log = (...args: unknown[]) => {
+		consoleOutput.push({ type: "log", args });
+		originalConsole.log(...args);
+	};
+	console.warn = (...args: unknown[]) => {
+		consoleOutput.push({ type: "warn", args });
+		originalConsole.warn(...args);
+	};
+	console.error = (...args: unknown[]) => {
+		consoleOutput.push({ type: "error", args });
+		originalConsole.error(...args);
+	};
+
+	// Create returnFile function
+	(window as any).returnFile = async (
+		fileName: string,
+		content: string | Uint8Array | Blob | Record<string, unknown>,
+		mimeType?: string,
+	) => {
+		let finalContent: string | Uint8Array;
+		let finalMimeType: string;
+
+		if (content instanceof Blob) {
+			const arrayBuffer = await content.arrayBuffer();
+			finalContent = new Uint8Array(arrayBuffer);
+			finalMimeType = mimeType || content.type || "application/octet-stream";
+			if (!mimeType && !content.type) {
+				throw new Error(
+					`returnFile: MIME type is required for Blob content. Please provide a mimeType parameter (e.g., "image/png").`,
+				);
+			}
+		} else if (content instanceof Uint8Array) {
+			finalContent = content;
+			if (!mimeType) {
+				throw new Error(
+					`returnFile: MIME type is required for Uint8Array content. Please provide a mimeType parameter (e.g., "image/png").`,
+				);
+			}
+			finalMimeType = mimeType;
+		} else if (typeof content === "string") {
+			finalContent = content;
+			finalMimeType = mimeType || "text/plain";
+		} else {
+			finalContent = JSON.stringify(content, null, 2);
+			finalMimeType = mimeType || "application/json";
+		}
+
+		files.push({ fileName, content: finalContent, mimeType: finalMimeType });
+	};
+
+	const cleanup = () => {
+		if (timeoutId) clearTimeout(timeoutId);
+		console.log = originalConsole.log;
+		console.warn = originalConsole.warn;
+		console.error = originalConsole.error;
+		delete (window as any).returnFile;
+	};
+
+	try {
+		// Set timeout
+		const timeoutPromise = new Promise((_, reject) => {
+			timeoutId = setTimeout(() => {
+				reject(new Error("Execution timeout: Code did not complete within 30 seconds"));
+			}, 30000) as unknown as number;
+		});
+
+		// Execute user code and capture the last expression value
+		// USER_CODE_PLACEHOLDER will be replaced with the actual async function containing user code
+		// @ts-expect-error
+		const userCodeFunc = USER_CODE_PLACEHOLDER;
+		const codePromise = userCodeFunc();
+
+		// Race between execution and timeout
+		const lastValue = await Promise.race([codePromise, timeoutPromise]);
+
+		cleanup();
+		return { success: true, console: consoleOutput, files: files, lastValue: lastValue };
+	} catch (error: any) {
+		cleanup();
+		return {
+			success: false,
+			error: error.message,
+			stack: error.stack,
+			console: consoleOutput,
+		};
+	}
+}
+
+// Build the wrapper code by combining safeguards and wrapper, then replacing placeholder
+function buildWrapperCode(userCode: string, skillLibrary: string, enableSafeguards: boolean): string {
+	// No escaping needed - we're injecting raw code into a function body
+	let code = `(${wrapperFunction.toString()})`;
+
+	// Inject safeguards at the beginning of the function if enabled
+	if (enableSafeguards) {
+		const safeguardsBody = securitySafeguards
+			.toString()
+			.replace(/^function securitySafeguards\(\) \{/, "")
+			.replace(/\}$/, "");
+		code = code.replace(
+			/async function wrapperFunction\(\) \{/,
+			`async function wrapperFunction() {\n${safeguardsBody}`,
+		);
+	}
+
+	// Inject skill library after safeguards but before user code
+	if (skillLibrary) {
+		code = code.replace(
+			/async function wrapperFunction\(\) \{/,
+			`async function wrapperFunction() {\n${skillLibrary}`,
+		);
+	}
+
+	// Replace USER_CODE_PLACEHOLDER with an async function containing the user code
+	code = code.replace(/USER_CODE_PLACEHOLDER/, `async () => { ${userCode} }`);
+
+	// Call the function immediately
+	return `${code}()`;
+}
+
 const browserJavaScriptSchema = Type.Object({
 	code: Type.String({ description: "JavaScript code to execute in the active browser tab" }),
+	title: Type.String({ description: "Brief description of what this code does (e.g., 'Extract page links', 'Get article text')" }),
 });
 
 export type BrowserJavaScriptToolResult = {
@@ -36,7 +365,7 @@ Environment: The current page's JavaScript context with full access to:
 - Page frameworks (React, Vue, Angular, etc.)
 - Can modify the page, read data, interact with page scripts
 
-The code is executed using eval() in the page context, so it can:
+The code runs in the main world of the page, so it can:
 - Access and modify global variables
 - Call page functions
 - Read/write to localStorage, cookies, etc.
@@ -61,7 +390,10 @@ Output:
       const csv = 'text,href\\n' + links.map(l => \`"\${l.text}","\${l.href}"\`).join('\\n');
       await returnFile('links.csv', csv, 'text/csv');
   * You will not have access to the file content, only the filename, mimeType and size.
-- NOT CAPTURED: returning values via return or a statement does NOT capture output. Use console.log() or returnFile().
+- return <value> - To capture and display a return value, use an explicit return statement at the end of your script
+  * Without an explicit return, the script executes but no value is captured
+  * Example: return document.title
+  * Example: return await Promise.resolve(42)
 
 Examples:
 - Get page title: document.title
@@ -138,16 +470,6 @@ This ensures reliable execution.`,
 				}
 			}
 
-			// Check if scripting API is available
-			if (!browser.scripting || !browser.scripting.executeScript) {
-				return {
-					output:
-						"Error: browser.scripting API is not available. Make sure 'scripting' permission is declared in manifest.json",
-					isError: true,
-					details: { files: [] },
-				};
-			}
-
 			// Get the active tab
 			const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
 			if (!tab || !tab.id) {
@@ -171,337 +493,124 @@ This ensures reliable execution.`,
 				};
 			}
 
-			// First, detect CSP policy to choose execution strategy
-			const cspCheckResults = await browser.scripting.executeScript({
-				target: { tabId: tab.id },
-				world: "MAIN",
-				func: () => {
-					// Try to detect if eval is allowed
-					let canEval = false;
+			// Check if userScripts API is available
+			if (!browser.userScripts) {
+				const chromeVersion = Number(navigator.userAgent.match(/(Chrome|Chromium)\/([0-9]+)/)?.[2]);
+				const isChrome = chromeVersion > 0;
+				const isFirefox = !isChrome;
+
+				// Firefox: Try to request userScripts permission if not granted
+				if (isFirefox && browser.permissions) {
 					try {
-						// biome-ignore lint/security/noGlobalEval: CSP detection test
-						// biome-ignore lint/complexity/noCommaOperator: indirect eval pattern
-						(0, eval)("1");
-						canEval = true;
-					} catch (e) {
-						// eval blocked
-					}
-
-					// Try to detect if script tag injection works
-					let canUseScriptTag = false;
-					const testId = `__test_${Date.now()}`;
-					const testScript = document.createElement("script");
-					testScript.textContent = `window.${testId} = true;`;
-					try {
-						document.head.appendChild(testScript);
-						// Check if it executed synchronously
-						canUseScriptTag = !!(window as any)[testId];
-						delete (window as any)[testId];
-						testScript.remove();
-					} catch (e) {
-						// script injection failed
-					}
-
-					return { canEval, canUseScriptTag };
-				},
-			});
-
-			const canUseEval = cspCheckResults[0]?.result?.canEval ?? false;
-			const canUseScriptTag = cspCheckResults[0]?.result?.canUseScriptTag ?? false;
-
-			// If neither method works, fallback to JailJS via content script
-			if (!canUseEval && !canUseScriptTag) {
-				console.log("[pi-ai] CSP blocks eval and script injection, falling back to JailJS");
-
-				// Send execution request to content script
-				const response = await new Promise<{
-					success: boolean;
-					result?: unknown;
-					console?: Array<{ type: string; args: unknown[] }>;
-					files?: Array<{ fileName: string; content: string | Uint8Array; mimeType: string }>;
-					error?: string;
-					stack?: string;
-				}>((resolve) => {
-					browser.tabs.sendMessage(
-						tab.id,
-						{
-							type: "EXECUTE_CODE",
-							mode: "jailjs",
-							code: args.code,
-						},
-						resolve,
-					);
-				});
-
-				if (!response.success) {
-					return {
-						output: `JailJS Execution Error: ${response.error}\n\nStack:\n${response.stack || "No stack trace"}`,
-						isError: true,
-						details: { files: [] },
-					};
-				}
-
-				// Format console output
-				const formatArg = (arg: unknown): string => {
-					if (arg === null) return "null";
-					if (arg === undefined) return "undefined";
-					if (typeof arg === "string") return arg;
-					if (typeof arg === "number" || typeof arg === "boolean") return String(arg);
-					try {
-						return JSON.stringify(arg, null, 2);
-					} catch {
-						return String(arg);
-					}
-				};
-
-				// Build output with console logs
-				let output = "";
-
-				// Add console output
-				if (response.console && response.console.length > 0) {
-					for (const entry of response.console) {
-						const prefix = entry.type === "error" ? "[ERROR]" : entry.type === "warn" ? "[WARN]" : "";
-						const formattedArgs = entry.args.map(formatArg).join(" ");
-						const line = prefix ? `${prefix} ${formattedArgs}` : formattedArgs;
-						output += line + "\n";
-					}
-				}
-
-				// Add file notifications
-				if (response.files && response.files.length > 0) {
-					output += `\n[Files returned: ${response.files.length}]\n`;
-					for (const file of response.files) {
-						output += `  - ${file.fileName} (${file.mimeType})\n`;
-					}
-				}
-
-				// Convert files to base64 for transport
-				const files = (response.files || []).map(
-					(f: { fileName: string; content: string | Uint8Array; mimeType: string }) => {
-						const toBase64 = (input: string | Uint8Array): { base64: string; size: number } => {
-							if (input instanceof Uint8Array) {
-								let binary = "";
-								const chunk = 0x8000;
-								for (let i = 0; i < input.length; i += chunk) {
-									binary += String.fromCharCode(...input.subarray(i, i + chunk));
-								}
-								return { base64: btoa(binary), size: input.length };
-							} else {
-								const enc = new TextEncoder();
-								const bytes = enc.encode(input);
-								let binary = "";
-								const chunk = 0x8000;
-								for (let i = 0; i < bytes.length; i += chunk) {
-									binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-								}
-								return { base64: btoa(binary), size: bytes.length };
+						const hasPermission = await browser.permissions.contains({ permissions: ["userScripts"] });
+						if (!hasPermission) {
+							const granted = await browser.permissions.request({ permissions: ["userScripts"] });
+							if (!granted) {
+								return {
+									output: "Error: userScripts permission denied.\n\nThe userScripts permission is required to execute JavaScript code safely.\nPlease allow the permission when prompted.",
+									isError: true,
+									details: { files: [] },
+								};
 							}
-						};
+							// Permission was just granted, but API might not be available yet
+							// Return a message asking user to try again
+							return {
+								output: "✅ userScripts permission granted!\n\nPlease try your request again.",
+								isError: false,
+								details: { files: [] },
+							};
+						}
+					} catch {
+						// Permission request failed or not supported
+					}
+				}
 
-						const { base64, size } = toBase64(f.content);
-						return {
-							fileName: f.fileName || "file",
-							mimeType: f.mimeType || "application/octet-stream",
-							size,
-							contentBase64: base64,
-						};
-					},
-				);
+				let errorMessage = "Error: browser.userScripts API is not available.\n\n";
+
+				if (isChrome && chromeVersion >= 138) {
+					errorMessage += `Chrome ${chromeVersion} detected. To enable User Scripts:\n\n`;
+					errorMessage += "1. Go to chrome://extensions/\n";
+					errorMessage += "2. Find this extension and click 'Details'\n";
+					errorMessage += "3. Enable the 'Allow User Scripts' toggle\n";
+					errorMessage += "4. Refresh the page and try again";
+				} else if (isChrome && chromeVersion >= 120) {
+					errorMessage += `Chrome ${chromeVersion} detected. To enable User Scripts:\n\n`;
+					errorMessage += "1. Go to chrome://extensions/\n";
+					errorMessage += "2. Enable 'Developer mode' toggle in the top right\n";
+					errorMessage += "3. Refresh the page and try again";
+				} else if (isChrome) {
+					errorMessage += `Chrome ${chromeVersion} detected, but User Scripts requires Chrome 120+.\n`;
+					errorMessage += "Please update Chrome or use a different browser.";
+				} else {
+					errorMessage += "This requires Chrome 120+ or Firefox with userScripts support.";
+				}
 
 				return {
-					output: output.trim() || "Code executed successfully (no output)",
-					isError: false,
-					details: { files },
+					output: errorMessage,
+					isError: true,
+					details: { files: [] },
 				};
 			}
 
-			// Execute the JavaScript in the tab context with abort handling
-			const executePromise = browser.scripting.executeScript({
-				target: { tabId: tab.id },
-				world: "MAIN",
-				func: (code: string, useScriptTag: boolean) => {
-					return new Promise((resolve) => {
-						// Capture console output
-						const consoleOutput: Array<{ type: string; args: unknown[] }> = [];
-						const files: Array<{ fileName: string; content: string | Uint8Array; mimeType: string }> = [];
-						let timeoutId: number;
+			// Load all skills for current domain and prepend libraries
+			const skillsRepo = getSitegeistStorage().skills;
+			let skillLibrary = "";
 
-						const originalConsole = {
-							log: console.log,
-							warn: console.warn,
-							error: console.error,
-						};
+			if (tab.url) {
+				const matchingSkills = await skillsRepo.getSkillsForUrl(tab.url);
+				if (matchingSkills.length > 0) {
+					skillLibrary = matchingSkills.map((s) => s.library).join("\n\n") + "\n\n";
+				}
+			}
 
-						// Override console methods to capture output
-						console.log = (...args: unknown[]) => {
-							consoleOutput.push({ type: "log", args });
-							originalConsole.log(...args);
-						};
-						console.warn = (...args: unknown[]) => {
-							consoleOutput.push({ type: "warn", args });
-							originalConsole.warn(...args);
-						};
-						console.error = (...args: unknown[]) => {
-							consoleOutput.push({ type: "error", args });
-							originalConsole.error(...args);
-						};
+			// Build the wrapper code using the function-based approach
+			// TODO: Add user setting to enable/disable safeguards
+			const wrapperCode = buildWrapperCode(args.code, skillLibrary, false); // Safeguards enabled now that we have isolated worlds
 
-						// Create returnFile function
-						(window as any).returnFile = async (
-							fileName: string,
-							content: string | Uint8Array | Blob | Record<string, unknown>,
-							mimeType?: string,
-						) => {
-							let finalContent: string | Uint8Array;
-							let finalMimeType: string;
+			let results: any[];
 
-							if (content instanceof Blob) {
-								// Convert Blob to Uint8Array
-								const arrayBuffer = await content.arrayBuffer();
-								finalContent = new Uint8Array(arrayBuffer);
-								finalMimeType = mimeType || content.type || "application/octet-stream";
+			// Dual implementation: Use userScripts.execute() if available (Chrome 135+),
+			// otherwise fall back to scripting.executeScript()
+			if (browser.userScripts && typeof browser.userScripts.execute === "function") {
+				// Chrome 135+ or future Firefox: Use userScripts.execute() API
+				// This provides proper USER_SCRIPT world with configurable CSP
+				const worldId = `exec_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
-								// Enforce MIME type requirement for binary data
-								if (!mimeType && !content.type) {
-									throw new Error(
-										`returnFile: MIME type is required for Blob content. Please provide a mimeType parameter (e.g., "image/png").`,
-									);
-								}
-							} else if (content instanceof Uint8Array) {
-								finalContent = content;
-								if (!mimeType) {
-									throw new Error(
-										`returnFile: MIME type is required for Uint8Array content. Please provide a mimeType parameter (e.g., "image/png").`,
-									);
-								}
-								finalMimeType = mimeType;
-							} else if (typeof content === "string") {
-								finalContent = content;
-								finalMimeType = mimeType || "text/plain";
-							} else {
-								// Assume it's an object to be JSON stringified
-								finalContent = JSON.stringify(content, null, 2);
-								finalMimeType = mimeType || "application/json";
-							}
-
-							files.push({
-								fileName,
-								content: finalContent,
-								mimeType: finalMimeType,
-							});
-						};
-
-						const cleanup = () => {
-							// Clear timeout
-							if (timeoutId) clearTimeout(timeoutId);
-
-							// Restore console
-							console.log = originalConsole.log;
-							console.warn = originalConsole.warn;
-							console.error = originalConsole.error;
-
-							// Clean up returnFile
-							delete (window as any).returnFile;
-						};
-
-						const handleError = (error: unknown) => {
-							cleanup();
-							const err = error as Error;
-							resolve({
-								success: false,
-								error: err.message,
-								stack: err.stack,
-								console: consoleOutput,
-							});
-						};
-
-						const handleSuccess = () => {
-							cleanup();
-							resolve({
-								success: true,
-								console: consoleOutput,
-								files: files,
-							});
-						};
-
-						// Set timeout to prevent hanging indefinitely
-						timeoutId = setTimeout(() => {
-							cleanup();
-							resolve({
-								success: false,
-								error: "Execution timeout",
-								stack: "Code execution did not complete within 30 seconds",
-								console: consoleOutput,
-							});
-						}, 30000) as unknown as number;
-
-						try {
-							if (useScriptTag) {
-								// Strategy 2: Inject as script tag (works with 'unsafe-inline' but not Trusted Types)
-								const script = document.createElement("script");
-								const uniqueId = `__browserjs_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-
-								// Wrap code in async IIFE and attach to window for result handling
-								const wrappedCode = `
-									(async () => {
-										try {
-											${code}
-											window.${uniqueId} = { success: true };
-										} catch (error) {
-											window.${uniqueId} = { success: false, error: error.message, stack: error.stack };
-										}
-									})();
-								`;
-
-								script.textContent = wrappedCode;
-
-								// Listen for execution completion
-								const checkCompletion = () => {
-									const result = (window as any)[uniqueId];
-									if (result) {
-										delete (window as any)[uniqueId];
-										script.remove();
-
-										if (result.success === false) {
-											handleError(new Error(result.error));
-										} else {
-											handleSuccess();
-										}
-									} else {
-										setTimeout(checkCompletion, 100);
-									}
-								};
-
-								document.head.appendChild(script);
-								setTimeout(checkCompletion, 100);
-							} else {
-								// Strategy 1: Use eval (fastest, but requires 'unsafe-eval' in CSP)
-								// Wrap code in async function to support await
-								const asyncCode = `(async () => { ${code} })()`;
-								// biome-ignore lint/security/noGlobalEval: needed for code execution
-								// biome-ignore lint/complexity/noCommaOperator: indirect eval pattern
-								const resultPromise = (0, eval)(asyncCode);
-
-								// Wait for async code to complete
-								Promise.resolve(resultPromise).then(handleSuccess).catch(handleError);
-							}
-						} catch (error: unknown) {
-							handleError(error);
-						}
+				// Configure this specific world with CSP that allows eval but blocks network
+				try {
+					await browser.userScripts.configureWorld({
+						worldId: worldId,
+						messaging: true,
+						// Allow eval for code execution, but block all network requests (fetch, XHR, WebSocket, etc.)
+						csp: "script-src 'unsafe-eval'; connect-src 'none'; default-src 'none';",
 					});
-				},
-				args: [args.code, canUseScriptTag && !canUseEval],
-			});
+				} catch (e) {
+					// May fail if already configured or not supported - non-fatal
+					console.warn("Failed to configure userScripts world:", e);
+				}
 
-			// Race between execution and abort signal
-			let results: Awaited<typeof executePromise>;
-			if (signal) {
-				const abortPromise = new Promise<never>((_, reject) => {
-					signal.addEventListener("abort", () => reject(new Error("Aborted")));
+				results = await browser.userScripts.execute({
+					js: [{ code: wrapperCode }],
+					target: { tabId: tab.id },
+					world: "USER_SCRIPT",
+					worldId: worldId,
+					injectImmediately: true,
 				});
-				results = await Promise.race([executePromise, abortPromise]);
 			} else {
-				results = await executePromise;
+				// Firefox doesn't have userScripts.execute() yet, and scripting.executeScript()
+				// cannot bypass page CSP to use eval. We have no workaround.
+				// See: https://bugzilla.mozilla.org/show_bug.cgi?id=1930776
+				return {
+					output: `Error: Firefox is currently not supported for the browser_javascript tool.
+
+Firefox does not yet support the userScripts.execute() API, which is required to execute arbitrary JavaScript code while bypassing page Content Security Policy.
+
+Please use Chrome 138+ with the "Allow User Scripts" toggle enabled, or wait for Firefox to implement userScripts.execute().
+
+Track Firefox implementation: https://bugzilla.mozilla.org/show_bug.cgi?id=1930776`,
+					isError: true,
+					details: { files: [] },
+				};
 			}
 
 			const result = results[0]?.result as
@@ -509,6 +618,7 @@ This ensures reliable execution.`,
 						success: boolean;
 						console?: Array<{ type: string; args: unknown[] }>;
 						files?: Array<{ fileName: string; content: string | Uint8Array; mimeType: string }>;
+						lastValue?: unknown;
 						error?: string;
 						stack?: string;
 				  }
@@ -516,7 +626,7 @@ This ensures reliable execution.`,
 
 			if (!result) {
 				return {
-					output: "Error: No result returned from script execution",
+					output: "Error: No result returned from script execution. Need to reload page.",
 					isError: true,
 					details: { files: [] },
 				};
@@ -552,6 +662,14 @@ This ensures reliable execution.`,
 					const line = prefix ? `${prefix} ${entry.args.join(" ")}` : entry.args.join(" ");
 					output += line + "\n";
 				}
+			}
+
+			// Add last expression value if present and not undefined
+			if (result.lastValue !== undefined) {
+				const formatted = typeof result.lastValue === "string"
+					? result.lastValue
+					: JSON.stringify(result.lastValue, null, 2);
+				output += (output ? "\n" : "") + formatted + "\n";
 			}
 
 			// Add file notifications
@@ -621,6 +739,7 @@ This ensures reliable execution.`,
 
 // Browser JavaScript renderer
 interface BrowserJavaScriptParams {
+	title: string;
 	code: string;
 }
 
@@ -634,72 +753,72 @@ interface BrowserJavaScriptResult {
 }
 
 export const browserJavaScriptRenderer: ToolRenderer<BrowserJavaScriptParams, BrowserJavaScriptResult> = {
-	renderParams(params: BrowserJavaScriptParams, isStreaming?: boolean): TemplateResult {
-		if (isStreaming && (!params.code || params.code.length === 0)) {
-			return html`<div class="text-sm text-muted-foreground">Writing JavaScript code...</div>`;
-		}
+	render(params: BrowserJavaScriptParams | undefined, result: ToolResultMessage<BrowserJavaScriptResult> | undefined, isStreaming?: boolean): TemplateResult {
+		// Determine status
+		const state = result ? (result.isError ? "error" : "complete") : isStreaming ? "inprogress" : "inprogress";
 
-		return html`
-			<div class="text-sm text-muted-foreground mb-2">Executing in active tab</div>
-			<code-block .code=${params.code || ""} language="javascript"></code-block>
-		`;
-	},
+		// With result: show params + result
+		if (result && params) {
+			const output = result.output || "";
+			const files = result.details?.files || [];
 
-	renderResult(_params: BrowserJavaScriptParams, result: ToolResultMessage<BrowserJavaScriptResult>): TemplateResult {
-		const output = result.output || "";
-		const files = result.details?.files || [];
-		const isError = result.isError === true;
+			const attachments: Attachment[] = files.map((f, i) => {
+				// Decode base64 content for text files to show in overlay
+				let extractedText: string | undefined;
+				const isTextBased =
+					f.mimeType?.startsWith("text/") ||
+					f.mimeType === "application/json" ||
+					f.mimeType === "application/javascript" ||
+					f.mimeType?.includes("xml");
 
-		const attachments: Attachment[] = files.map((f, i) => {
-			// Decode base64 content for text files to show in overlay
-			let extractedText: string | undefined;
-			const isTextBased =
-				f.mimeType?.startsWith("text/") ||
-				f.mimeType === "application/json" ||
-				f.mimeType === "application/javascript" ||
-				f.mimeType?.includes("xml");
-
-			if (isTextBased && f.contentBase64) {
-				try {
-					extractedText = atob(f.contentBase64);
-				} catch (e) {
-					console.warn("Failed to decode base64 content for", f.fileName);
+				if (isTextBased && f.contentBase64) {
+					try {
+						extractedText = atob(f.contentBase64);
+					} catch (e) {
+						console.warn("Failed to decode base64 content for", f.fileName);
+					}
 				}
-			}
 
-			return {
-				id: `browser-js-${Date.now()}-${i}`,
-				type: f.mimeType?.startsWith("image/") ? "image" : "document",
-				fileName: f.fileName || `file-${i}`,
-				mimeType: f.mimeType || "application/octet-stream",
-				size: f.size ?? 0,
-				content: f.contentBase64,
-				preview: f.mimeType?.startsWith("image/") ? f.contentBase64 : undefined,
-				extractedText,
-			};
-		});
+				return {
+					id: `browser-js-${Date.now()}-${i}`,
+					type: f.mimeType?.startsWith("image/") ? "image" : "document",
+					fileName: f.fileName || `file-${i}`,
+					mimeType: f.mimeType || "application/octet-stream",
+					size: f.size ?? 0,
+					content: f.contentBase64,
+					preview: f.mimeType?.startsWith("image/") ? f.contentBase64 : undefined,
+					extractedText,
+				};
+			});
 
-		if (isError) {
 			return html`
-				<div class="text-sm">
-					<div class="text-destructive font-medium mb-1">Execution failed:</div>
-					<pre class="text-xs font-mono text-destructive bg-destructive/10 p-2 rounded overflow-x-auto">${output}</pre>
+				<div class="space-y-3">
+					${renderHeader(state, Globe, params.title)}
+					<code-block .code=${params.code || ""} language="javascript"></code-block>
+					${output ? html`<console-block .content=${output} .variant=${result.isError ? "error" : "default"}></console-block>` : ""}
+					${
+						attachments.length
+							? html`<div class="flex flex-wrap gap-2">
+								${attachments.map((att) => html`<attachment-tile .attachment=${att}></attachment-tile>`)}
+							</div>`
+							: ""
+					}
 				</div>
 			`;
 		}
 
-		return html`
-			<div class="flex flex-col gap-3">
-				${output ? html`<console-block .content=${output}></console-block>` : ""}
-				${
-					attachments.length
-						? html`<div class="flex flex-wrap gap-2">
-							${attachments.map((att) => html`<attachment-tile .attachment=${att}></attachment-tile>`)}
-						</div>`
-						: ""
-				}
-			</div>
-		`;
+		// Just params (streaming or waiting for result)
+		if (params) {
+			return html`
+				<div class="space-y-3">
+					${renderHeader(state, Globe, params.title || (isStreaming ? i18n("Writing JavaScript code...") : i18n("Execute JavaScript")))}
+					${params.code ? html`<code-block .code=${params.code} language="javascript"></code-block>` : ""}
+				</div>
+			`;
+		}
+
+		// No params or result yet
+		return renderHeader(state, Globe, i18n("Preparing JavaScript..."));
 	},
 };
 

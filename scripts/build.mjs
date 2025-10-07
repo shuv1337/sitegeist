@@ -15,7 +15,8 @@ const outDir = join(packageRoot, `dist-${targetBrowser}`);
 
 const entryPoints = {
   sidepanel: join(packageRoot, "src/sidepanel.ts"),
-  background: join(packageRoot, "src/background.ts")
+  background: join(packageRoot, "src/background.ts"),
+  "tool-renderers": join(packageRoot, "src/tool-renderers.ts")
 };
 
 rmSync(outDir, { recursive: true, force: true });

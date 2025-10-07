@@ -1,7 +1,7 @@
 import { customElement } from "lit/decorators.js";
 import { i18n } from "@mariozechner/pi-web-ui";
 import { PermissionDialog } from "./PermissionDialog.js";
-import { requestUserScriptsPermission } from "../tools/browser-javascript-userscripts.js";
+import { requestUserScriptsPermission } from "../tools/browser-javascript.js";
 
 @customElement("userscripts-permission-dialog")
 export class UserScriptsPermissionDialog extends PermissionDialog {

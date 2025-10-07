@@ -1,14 +1,13 @@
-import { html, type TemplateResult, icon } from "@mariozechner/mini-lit";
+import { html, icon, type TemplateResult } from "@mariozechner/mini-lit";
 import "@mariozechner/mini-lit/dist/MarkdownBlock.js";
 import { StringEnum, type AgentTool, type ToolResultMessage } from "@mariozechner/pi-ai";
-import { registerToolRenderer, type ToolRenderer, SandboxIframe } from "@mariozechner/pi-web-ui";
+import { registerToolRenderer, type ToolRenderer, SandboxIframe, renderHeader, i18n } from "@mariozechner/pi-web-ui";
 import { Type, type Static } from "@sinclair/typebox";
-import { BookOpen, List, Sparkles, Edit, Trash2, AlertCircle, ChevronDown, ChevronUp } from "lucide";
+import { Sparkles } from "lucide";
+import { DomainPill } from "../components/DomainPill.js";
+import { SkillPill } from "../components/SkillPill.js";
 import type { Skill } from "../storage/skills-repository.js";
 import { getSitegeistStorage } from "../storage/app-storage.js";
-import { getFaviconUrl } from "../utils/favicon.js";
-import { LitElement } from "lit";
-import { property, state } from "lit/decorators.js";
 
 // Cross-browser API
 // @ts-expect-error
@@ -155,16 +154,20 @@ If invalid skill name provided, returns list of available skills for domain.`,
 						if (available.length === 0) {
 							return { output: `Skill '${args.name}' not found. No skills available for current domain.`, isError: true, details: {} };
 						}
-						const list = available.map((s) => `- ${s.name}: ${s.shortDescription}`).join("\n");
+						const list = available.map((s) => `${s.name}: ${s.shortDescription}`).join("\n");
 						return {
-							output: `Skill '${args.name}' not found. Available skills for current domain:\n\n${list}`,
+							output: `Skill '${args.name}' not found. Available skills:\n${list}`,
 							isError: true,
 							details: {},
 						};
 					}
 
+					// Token-efficient output for LLM: name, domains, description, examples
+					const domainsStr = skill.domainPatterns.join(", ");
+					const llmOutput = `${skill.name} (${domainsStr})\n${skill.description}\n\nExamples:\n${skill.examples}`;
+
 					return {
-						output: `# ${skill.name}\n\n${skill.description}\n\n## Examples\n\`\`\`javascript\n${skill.examples}\n\`\`\``,
+						output: llmOutput,
 						isError: false,
 						details: skill,
 					};
@@ -173,11 +176,12 @@ If invalid skill name provided, returns list of available skills for domain.`,
 				case "list": {
 					const skillList = await skillsRepo.listSkills(currentUrl);
 					if (skillList.length === 0) {
-						return { output: "No skills found for current domain.", isError: false, details: {} };
+						return { output: "No skills found for current domain.", isError: false, details: { skills: [] } };
 					}
 
-					const output = skillList.map((s) => `- **${s.name}**: ${s.shortDescription}`).join("\n");
-					return { output: `# Skills for current domain (${skillList.length})\n\n${output}`, isError: false, details: { skills: skillList } };
+					// Token-efficient list for LLM: name: short description
+					const llmOutput = skillList.map((s) => `${s.name}: ${s.shortDescription}`).join("\n");
+					return { output: llmOutput, isError: false, details: { skills: skillList } };
 				}
 
 				case "create": {
@@ -212,7 +216,7 @@ If invalid skill name provided, returns list of available skills for domain.`,
 					await skillsRepo.saveSkill(newSkill);
 
 					return {
-						output: `Skill '${args.data.name}' created!\n\n${args.data.description}\n\n## Examples\n\n\`\`\`javascript\n${args.data.examples}\n\`\`\``,
+						output: `Skill '${args.data.name}' created.`,
 						isError: false,
 						details: newSkill,
 					};
@@ -251,7 +255,7 @@ If invalid skill name provided, returns list of available skills for domain.`,
 					await skillsRepo.saveSkill(updated);
 
 					return {
-						output: `Skill '${args.name}' updated!`,
+						output: `Skill '${args.name}' updated.`,
 						isError: false,
 						details: updated
 					};
@@ -268,7 +272,7 @@ If invalid skill name provided, returns list of available skills for domain.`,
 					}
 
 					await skillsRepo.deleteSkill(args.name);
-					return { output: `Skill '${args.name}' deleted.`, isError: false, details: {} };
+					return { output: `Skill '${args.name}' deleted.`, isError: false, details: { name: args.name } };
 				}
 
 				default:
@@ -280,166 +284,231 @@ If invalid skill name provided, returns list of available skills for domain.`,
 	},
 };
 
-// Renderer
-export class SkillRenderer extends LitElement implements ToolRenderer<SkillParams, any> {
-	@property({ type: Object }) params!: SkillParams;
-	@property({ type: Boolean }) isStreaming = false;
-	@state() private expanded = false;
+// Renderer result types
+interface SkillResultDetails {
+	skills?: Skill[];
+	name?: string;
+	domainPatterns?: string[];
+	shortDescription?: string;
+	description?: string;
+	examples?: string;
+	library?: string;
+}
 
-	protected createRenderRoot() {
-		return this;
-	}
+export const skillRenderer: ToolRenderer<SkillParams, SkillResultDetails> = {
+	render(params: SkillParams | undefined, result: ToolResultMessage<SkillResultDetails> | undefined): TemplateResult {
+		const state = result ? (result.isError ? "error" : "complete") : "inprogress";
 
-	toggleExpanded() {
-		this.expanded = !this.expanded;
-	}
-
-	renderParams(params: SkillParams, isStreaming?: boolean): TemplateResult {
-		this.params = params;
-		this.isStreaming = isStreaming || false;
-		this.expanded = false; // Reset expanded state for new params
-		return html`${this}`;
-	}
-
-	render(): TemplateResult {
-		const params = this.params;
-		if (!params) return html``;
-
-		const isStreaming = this.isStreaming;
-		const { action, name, data } = params;
-
-		// Action-specific icons and labels
-		const actionConfig: Record<string, { icon: any; getLabel: (name?: string) => string }> = {
-			get: { icon: BookOpen, getLabel: (n) => `Get Skill${n ? ` "${n}"` : ""}` },
-			list: { icon: List, getLabel: () => "List Skills" },
-			create: { icon: Sparkles, getLabel: (n) => `Create Skill${n || data?.name ? ` "${n || data?.name}"` : ""}` },
-			update: { icon: Edit, getLabel: (n) => `Update Skill${n ? ` "${n}"` : ""}` },
-			delete: { icon: Trash2, getLabel: (n) => `Delete Skill${n ? ` "${n}"` : ""}` },
-		};
-
-		const config = actionConfig[action] || { icon: null, getLabel: () => `Skill: ${action}` };
-		const label = config.getLabel(name);
-
-		// Only show "Processing..." for create action (others are instant)
-		const showProcessing = isStreaming && action === 'create';
-
-		// Show expand/collapse for create action only (has full details)
-		const canExpand = action === 'create';
-
-		return html`
-			<div class="rounded-md border border-border bg-card p-3 space-y-3">
-				<!-- Header with action and status -->
-				<div class="flex items-center justify-between gap-2">
-					<div class="flex items-center gap-2">
-						${config.icon ? html`<span class="text-muted-foreground">${icon(config.icon, "sm")}</span>` : ""}
-						<span class="font-medium text-sm">${label}</span>
-					</div>
-					<div class="flex items-center gap-2">
-						${showProcessing ? html`<span class="text-xs text-muted-foreground">Processing...</span>` : ""}
-						${canExpand ? html`
-							<button
-								class="text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-								@click=${() => this.toggleExpanded()}
-							>
-								${icon(this.expanded ? ChevronUp : ChevronDown, "sm")}
-							</button>
-						` : ""}
-					</div>
-				</div>
-
-				${data ? html`
-					<!-- Domain info (using same style as NavigationMessage) -->
-					${data.domainPatterns && data.domainPatterns.length > 0 ? html`
-						<div class="flex flex-wrap gap-2">
-							${data.domainPatterns.map(pattern => html`
-								<div class="inline-flex items-center gap-2 px-3 py-1.5 text-xs bg-muted/50 border border-border rounded-lg">
-									<img src=${getFaviconUrl(pattern, 16)} width="16" height="16" alt="" class="flex-shrink-0" />
-									<code class="text-muted-foreground font-mono">${pattern}</code>
-								</div>
-							`)}
-						</div>
-					` : ""}
-
-					<!-- Short description -->
-					${data.shortDescription ? html`
-						<div class="text-sm text-foreground">${data.shortDescription}</div>
-					` : ""}
-
-					${this.expanded ? html`
-						<!-- Full description (markdown) -->
-						${data.description ? html`
-							<div class="prose prose-sm max-w-none text-muted-foreground">
-								<markdown-block .content=${data.description}></markdown-block>
-							</div>
-						` : ""}
-
-						<!-- Examples (markdown) -->
-						${data.examples ? html`
-							<div class="space-y-1">
-								<div class="text-xs font-medium text-muted-foreground">Examples</div>
-								<div class="prose prose-sm max-w-none">
-									<markdown-block .content=${data.examples}></markdown-block>
-								</div>
-							</div>
-						` : ""}
-
-						<!-- Library code -->
-						${data.library ? html`
-							<div class="space-y-1">
-								<div class="text-xs font-medium text-muted-foreground">Library Code</div>
-								<code-block .code=${data.library} language="javascript" .showLineNumbers=${false}></code-block>
-							</div>
-						` : ""}
-					` : ""}
-				` : ""}
+		// Helper to render domain pills
+		const renderDomainPills = (patterns: string[]) => html`
+			<div class="flex flex-wrap gap-2">
+				${patterns.map(pattern => DomainPill(pattern))}
 			</div>
 		`;
-	}
 
-	renderResult(_params: SkillParams, result: ToolResultMessage<any>): TemplateResult {
-		const output = result.output || "";
-		const isError = result.isError === true;
-		const details = result.details || {};
+		// Helper to render skill fields (used by create/update/get)
+		const renderSkillFields = (skill: Partial<Skill>, showLibrary: boolean) => html`
+			${skill.domainPatterns?.length ? renderDomainPills(skill.domainPatterns) : ""}
+			${skill.shortDescription ? html`<div class="text-sm text-muted-foreground">${skill.shortDescription}</div>` : ""}
+			${skill.description ? html`<markdown-block .content=${skill.description}></markdown-block>` : ""}
+			${skill.examples ? html`
+				<div class="space-y-2">
+					<div class="text-sm font-medium text-muted-foreground">${i18n("Examples")}</div>
+					<code-block .code=${skill.examples} language="javascript"></code-block>
+				</div>
+			` : ""}
+			${showLibrary && skill.library ? html`
+				<div class="space-y-2">
+					<div class="text-sm font-medium text-muted-foreground">${i18n("Library")}</div>
+					<code-block .code=${skill.library} language="javascript"></code-block>
+				</div>
+			` : ""}
+		`;
 
-		// Check if output looks like markdown
-		const hasMarkdown = output.includes('#') || output.includes('**') || output.includes('```');
+		// Error handling
+		if (result?.isError) {
+			const action = params?.action;
+			const skillName = params?.name || params?.data?.name;
+			const labels: Record<string, string> = {
+				get: i18n("Getting skill"),
+				list: i18n("Listing skills"),
+				create: i18n("Creating skill"),
+				update: i18n("Updating skill"),
+				delete: i18n("Deleting skill"),
+			};
+			const headerText = skillName ? `${labels[action!] || action} ${skillName}` : labels[action!] || action || "";
 
-		// Get domain patterns from details if available (for get/list/delete actions)
-		const domainPatterns = details.domainPatterns || (details.skills && details.skills.length > 0 ? details.skills[0].domainPatterns : null);
-
-		if (isError) {
-			return html`
-				<div class="rounded-md border border-destructive/50 bg-destructive/10 p-3 space-y-3">
-					<div class="flex items-start gap-2">
-						<span class="text-destructive">${icon(AlertCircle, "sm")}</span>
-						<div class="text-sm text-destructive whitespace-pre-wrap flex-1">${output}</div>
+			// For create/update errors, show partial skill data with error at bottom
+			if ((action === "create" || action === "update") && params?.data) {
+				return html`
+					<div class="space-y-3">
+						${renderHeader(state, Sparkles, headerText)}
+						${renderSkillFields(params.data, true)}
+						<div class="w-full px-3 py-2 text-sm text-destructive bg-destructive/10 border border-destructive rounded">
+							${result.output || ""}
+						</div>
 					</div>
+				`;
+			}
+
+			return html`
+				<div class="space-y-3">
+					${renderHeader(state, Sparkles, headerText)}
+					<div class="text-sm text-destructive">${result.output || ""}</div>
 				</div>
 			`;
 		}
 
-		return html`
-			<div class="rounded-md border border-border bg-card p-3 space-y-3">
-				${domainPatterns && domainPatterns.length > 0 ? html`
-					<div class="flex flex-wrap gap-2">
-						${domainPatterns.map((pattern: string) => html`
-							<div class="inline-flex items-center gap-2 px-3 py-1.5 text-xs bg-muted/50 border border-border rounded-lg">
-								<img src=${getFaviconUrl(pattern, 16)} width="16" height="16" alt="" class="flex-shrink-0" />
-								<code class="text-muted-foreground font-mono">${pattern}</code>
+		// Full params + result
+		if (result && params) {
+			const { action } = params;
+			const skill = result.details;
+
+			switch (action) {
+				case "get": {
+					// Show clickable skill pill in header
+					if (!skill?.name) {
+						return renderHeader(state, Sparkles, i18n("No skills found"));
+					}
+
+					// Create a full Skill object from the result details
+					const fullSkill: Skill = {
+						name: skill.name,
+						domainPatterns: skill.domainPatterns || [],
+						shortDescription: skill.shortDescription || "",
+						description: skill.description || "",
+						examples: skill.examples || "",
+						library: skill.library || "",
+						createdAt: "",
+						lastUpdated: "",
+					};
+
+					const statusIcon = html`<span class="inline-block text-green-600 dark:text-green-500">${icon(Sparkles, "sm")}</span>`;
+
+					return html`
+						<div class="flex items-center gap-2 text-sm text-muted-foreground">
+							${statusIcon}
+							<span>${i18n("Got skill")}</span>
+							${SkillPill(fullSkill, true)}
+						</div>
+					`;
+				}
+
+				case "list": {
+					// Show "Skills for <domain>" header + skill pills
+					const skills = skill?.skills || [];
+					if (skills.length === 0) {
+						return renderHeader(state, Sparkles, i18n("No skills found"));
+					}
+
+					// Get domain from first skill
+					const domain = skills[0]?.domainPatterns?.[0] || "";
+					const statusIcon = html`<span class="inline-block text-green-600 dark:text-green-500">${icon(Sparkles, "sm")}</span>`;
+
+					return html`
+						<div class="space-y-3">
+							<div class="flex items-center gap-2 text-sm text-muted-foreground">
+								${statusIcon}
+								<span>${i18n("Skills for domain")}</span>
+								${domain ? DomainPill(domain) : ""}
 							</div>
-						`)}
-					</div>
-				` : ""}
-				${hasMarkdown ? html`
-					<markdown-block .content=${output}></markdown-block>
-				` : html`
-					<div class="text-sm text-foreground whitespace-pre-wrap">${output}</div>
-				`}
-			</div>
-		`;
-	}
-}
+							<div class="flex flex-wrap gap-2">
+								${skills.map(s => SkillPill(s, true))}
+							</div>
+						</div>
+					`;
+				}
 
-customElements.define("skill-renderer", SkillRenderer);
+				case "create":
+				case "update": {
+					// Show all skill fields (including library)
+					// Skill data comes from result.details (full Skill object)
+					const skillData = skill || params.data || {};
+					const skillName = skillData.name;
+					if (!skillName) {
+						return renderHeader(state, Sparkles, i18n("Processing skill..."));
+					}
 
-registerToolRenderer(skillTool.name, new SkillRenderer());
+					const headerText = action === "create"
+						? (state === "complete" ? i18n("Created skill") : i18n("Creating skill"))
+						: (state === "complete" ? i18n("Updated skill") : i18n("Updating skill"));
+
+					return html`
+						<div class="space-y-3">
+							${renderHeader(state, Sparkles, headerText)}
+							${renderSkillFields(skillData, true)}
+						</div>
+					`;
+				}
+
+				case "delete": {
+					// Show "Deleted skill" with pill in header row
+					const skillName = params.name;
+					const statusIcon = html`<span class="inline-block text-green-600 dark:text-green-500">${icon(Sparkles, "sm")}</span>`;
+					return html`
+						<div class="flex items-center gap-2 text-sm text-muted-foreground">
+							${statusIcon}
+							<span>${i18n("Deleted skill")}</span>
+							${skillName ? SkillPill(skillName) : ""}
+						</div>
+					`;
+				}
+
+				default:
+					return renderHeader(state, Sparkles, result.output || "");
+			}
+		}
+
+		// Params only (streaming)
+		if (params) {
+			const { action, name, data } = params;
+
+			switch (action) {
+				case "create":
+				case "update": {
+					// Show streaming skill fields as they come in
+					const skillName = data?.name || name;
+					if (!skillName) {
+						const labels: Record<string, string> = {
+							create: i18n("Creating skill"),
+							update: i18n("Updating skill"),
+						};
+						return renderHeader(state, Sparkles, labels[action] || "");
+					}
+
+					const labels: Record<string, string> = {
+						create: i18n("Creating skill"),
+						update: i18n("Updating skill"),
+					};
+					const headerText = `${labels[action]} ${skillName}`;
+
+					return html`
+						<div class="space-y-3">
+							${renderHeader(state, Sparkles, headerText)}
+							${data ? renderSkillFields(data, true) : ""}
+						</div>
+					`;
+				}
+
+				case "get":
+				case "list":
+				case "delete":
+				default: {
+					const skillName = name || data?.name;
+					const labels: Record<string, string> = {
+						get: i18n("Getting skill"),
+						list: i18n("Listing skills"),
+						delete: i18n("Deleting skill"),
+					};
+					const headerText = skillName ? `${labels[action] || action} ${skillName}` : labels[action] || action || "";
+					return renderHeader(state, Sparkles, headerText);
+				}
+			}
+		}
+
+		// No params, no result
+		return renderHeader(state, Sparkles, i18n("Processing skill..."));
+	},
+};
+
+registerToolRenderer(skillTool.name, skillRenderer);

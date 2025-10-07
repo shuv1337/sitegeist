@@ -6,7 +6,7 @@ import {
 	javascriptReplTool,
 	registerToolRenderer,
 } from "@mariozechner/pi-web-ui";
-import "./browser-javascript-userscripts.js"; // Import for side effects (registers renderer)
+import "./browser-javascript.js"; // Import for side effects (registers renderer)
 import "./skill.js";
 
 // Register all built-in tool renderers
@@ -16,5 +16,5 @@ registerToolRenderer("bash", new BashRenderer());
 
 // Re-export for convenience
 export { createJavaScriptReplTool, javascriptReplTool };
-export { browserJavaScriptTool, requestUserScriptsPermission } from "./browser-javascript-userscripts.js";
+export { browserJavaScriptTool, requestUserScriptsPermission } from "./browser-javascript.js";
 export { skillTool } from "./skill.js";

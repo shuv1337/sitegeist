@@ -11,6 +11,24 @@ declare module "@mariozechner/mini-lit" {
 		"Code runs in an isolated environment with security safeguards": string;
 		"Network access is blocked to prevent data exfiltration": string;
 		"You can revoke this permission at any time in browser settings": string;
+		"Writing JavaScript code...": string;
+		"Execute JavaScript": string;
+		"Preparing JavaScript...": string;
+		"Getting skill": string;
+		"Got skill": string;
+		"Listing skills": string;
+		"Creating skill": string;
+		"Created skill": string;
+		"Updating skill": string;
+		"Updated skill": string;
+		"Deleting skill": string;
+		"Processing skill...": string;
+		"No skills found": string;
+		"Skills for domain": string;
+		"Deleted skill": string;
+		"Examples": string;
+		"Library": string;
+		"Command failed:": string;
 	}
 }
 
@@ -29,6 +47,24 @@ const sitegeistTranslations = {
 		"Network access is blocked to prevent data exfiltration": "Network access is blocked to prevent data exfiltration",
 		"You can revoke this permission at any time in browser settings":
 			"You can revoke this permission at any time in browser settings",
+		"Writing JavaScript code...": "Writing JavaScript code...",
+		"Execute JavaScript": "Execute JavaScript",
+		"Preparing JavaScript...": "Preparing JavaScript...",
+		"Getting skill": "Getting skill",
+		"Got skill": "Got skill",
+		"Listing skills": "Listing skills",
+		"Creating skill": "Creating skill",
+		"Created skill": "Created skill",
+		"Updating skill": "Updating skill",
+		"Updated skill": "Updated skill",
+		"Deleting skill": "Deleting skill",
+		"Processing skill...": "Processing skill...",
+		"No skills found": "No skills found",
+		"Skills for domain": "Skills for domain",
+		"Deleted skill": "Deleted skill",
+		"Examples": "Examples",
+		"Library": "Library",
+		"Command failed:": "Command failed:",
 	},
 	de: {
 		"Permission request failed": "Berechtigungsanfrage fehlgeschlagen",
@@ -45,6 +81,24 @@ const sitegeistTranslations = {
 			"Netzwerkzugriff ist blockiert, um Datenexfiltration zu verhindern",
 		"You can revoke this permission at any time in browser settings":
 			"Sie können diese Berechtigung jederzeit in den Browsereinstellungen widerrufen",
+		"Writing JavaScript code...": "Schreibe JavaScript-Code...",
+		"Execute JavaScript": "Führe JavaScript aus",
+		"Preparing JavaScript...": "Bereite JavaScript vor...",
+		"Getting skill": "Hole Skill",
+		"Got skill": "Skill erhalten",
+		"Listing skills": "Liste Skills auf",
+		"Creating skill": "Erstelle Skill",
+		"Created skill": "Skill erstellt",
+		"Updating skill": "Aktualisiere Skill",
+		"Updated skill": "Skill aktualisiert",
+		"Deleting skill": "Lösche Skill",
+		"Processing skill...": "Verarbeite Skill...",
+		"No skills found": "Keine Skills gefunden",
+		"Skills for domain": "Skills für Domain",
+		"Deleted skill": "Skill gelöscht",
+		"Examples": "Beispiele",
+		"Library": "Bibliothek",
+		"Command failed:": "Befehl fehlgeschlagen:",
 	},
 };
 
