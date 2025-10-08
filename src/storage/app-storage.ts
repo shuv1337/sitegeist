@@ -1,42 +1,65 @@
-import { AppStorage as BaseAppStorage, getAppStorage, IndexedDBStorageBackend } from "@mariozechner/pi-web-ui";
-import { MemoriesRepository } from "./memories-repository.js";
-import { SkillsRepository } from "./skills-repository.js";
+import {
+	AppStorage as BaseAppStorage,
+	getAppStorage,
+	IndexedDBStorageBackend,
+	ProviderKeysStore,
+	SessionsStore,
+	SettingsStore,
+} from "@mariozechner/pi-web-ui";
+import { MemoriesStore } from "./stores/memories-store.js";
+import { PromptsStore } from "./stores/prompts-store.js";
+import { SkillsStore } from "./stores/skills-store.js";
 
 /**
- * Extended AppStorage for Sitegeist with skills and memories repositories.
+ * Extended AppStorage for Sitegeist with skills, memories, and prompts stores.
  */
 export class SitegeistAppStorage extends BaseAppStorage {
-	readonly skills: SkillsRepository;
-	readonly memories: MemoriesRepository;
+	readonly memories: MemoriesStore;
+	readonly skills: SkillsStore;
+	readonly prompts: PromptsStore;
 
 	constructor() {
-		// Create unified IndexedDB backend with all stores
+		// 1. Create all stores (no backend yet)
+		const settings = new SettingsStore();
+		const providerKeys = new ProviderKeysStore();
+		const sessions = new SessionsStore();
+		const memories = new MemoriesStore();
+		const skills = new SkillsStore();
+		const prompts = new PromptsStore();
+
+		// 2. Gather configs from all stores
+		const configs = [
+			settings.getConfig(),
+			SessionsStore.getMetadataConfig(),
+			providerKeys.getConfig(),
+			sessions.getConfig(),
+			memories.getConfig(),
+			skills.getConfig(),
+			prompts.getConfig(),
+		];
+
+		// 3. Create backend with all configs
 		const backend = new IndexedDBStorageBackend({
 			dbName: "sitegeist-storage",
 			version: 1,
-			stores: [
-				// Core stores (web-ui)
-				{
-					name: "sessions-metadata",
-					keyPath: "id",
-					indices: [{ name: "lastModified", keyPath: "lastModified" }],
-				},
-				{ name: "sessions-data", keyPath: "id" },
-				{ name: "settings" },
-				{ name: "provider-keys" },
-
-				// Sitegeist stores
-				{ name: "memories" },
-				{ name: "skills" },
-				{ name: "user-prompts" }, // Future use
-			],
+			stores: configs,
 		});
 
-		super(backend);
+		// 4. Wire backend to all stores
+		settings.setBackend(backend);
+		providerKeys.setBackend(backend);
+		sessions.setBackend(backend);
+		memories.setBackend(backend);
+		skills.setBackend(backend);
+		prompts.setBackend(backend);
 
-		// Add Sitegeist-specific repositories
-		this.skills = new SkillsRepository(backend);
-		this.memories = new MemoriesRepository(backend);
+		// 5. Pass base stores to parent
+		super(settings, providerKeys, sessions, backend);
+
+		// 6. Store references to sitegeist-specific stores
+		this.memories = memories;
+		this.skills = skills;
+		this.prompts = prompts;
 	}
 }
 

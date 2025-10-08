@@ -25,8 +25,8 @@ export class SkillsTab extends SettingsTab {
 
 	async loadSkills() {
 		const storage = getSitegeistStorage();
-		this.skills = await storage.skills.listSkills().then(list =>
-			Promise.all(list.map(s => storage.skills.getSkill(s.name))).then(skills => skills.filter(Boolean) as Skill[])
+		this.skills = await storage.skills.list().then(list =>
+			Promise.all(list.map(s => storage.skills.get(s.name))).then(skills => skills.filter(Boolean) as Skill[])
 		);
 		this.filterSkills();
 	}
@@ -51,7 +51,7 @@ export class SkillsTab extends SettingsTab {
 		if (!confirm(`Delete skill "${skill.name}"?`)) return;
 
 		const storage = getSitegeistStorage();
-		await storage.skills.deleteSkill(skill.name);
+		await storage.skills.delete(skill.name);
 		await this.loadSkills();
 	}
 
@@ -72,7 +72,7 @@ export class SkillsTab extends SettingsTab {
 			...this.editingSkill,
 			lastUpdated: new Date().toISOString(),
 		};
-		await storage.skills.saveSkill(toSave);
+		await storage.skills.save(toSave);
 		this.editingSkill = null;
 		await this.loadSkills();
 	}
@@ -85,8 +85,8 @@ export class SkillsTab extends SettingsTab {
 
 	async exportSkills() {
 		const storage = getSitegeistStorage();
-		const allSkills = await storage.skills.listSkills().then(list =>
-			Promise.all(list.map(s => storage.skills.getSkill(s.name))).then(skills => skills.filter(Boolean) as Skill[])
+		const allSkills = await storage.skills.list().then(list =>
+			Promise.all(list.map(s => storage.skills.get(s.name))).then(skills => skills.filter(Boolean) as Skill[])
 		);
 
 		const json = JSON.stringify(allSkills, null, 2);
@@ -124,7 +124,7 @@ export class SkillsTab extends SettingsTab {
 				const conflicts: { skill: Skill; selected: boolean }[] = [];
 
 				for (const skill of imported) {
-					const existing = await storage.skills.getSkill(skill.name);
+					const existing = await storage.skills.get(skill.name);
 					if (existing) {
 						conflicts.push({ skill, selected: true });
 					}
@@ -154,7 +154,7 @@ export class SkillsTab extends SettingsTab {
 
 		let imported = 0;
 		for (const skill of toImport) {
-			await storage.skills.saveSkill(skill);
+			await storage.skills.save(skill);
 			imported++;
 		}
 
