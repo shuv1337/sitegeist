@@ -93,13 +93,13 @@ export async function browserMessageTransformer(messages: AppMessage[]): Promise
 			const skills = await skillsRepo.getSkillsForUrl(nav.url);
 			let skillsInfo = "";
 			if (skills.length > 0) {
-				const skillNames = skills.map(s => s.name).join(", ");
-				skillsInfo = `\n\nAvailable skills: ${skillNames}. If relevant for current task, use skill tool with { action: "get", name: "skill-name" } to learn about a skill.`;
+				const skillNames = skills.map(s => `${s.name}: ${s.shortDescription}`).join("\n");
+				skillsInfo = `\n\nSkills available (MUST USE - do not rewrite):\n${skillNames}\n\nREQUIRED WORKFLOW:\n1. Get skill: skill({ action: "get", name: "skill-name" })\n2. Use skill functions via browser_javascript\n3. Custom code ONLY if skill is insufficient\n\nSkills exist to save tokens - use them!`;
 			}
 
 			transformed.push({
 				role: "user",
-				content: `<browser-context>Navigated to ${nav.title}${tabInfo}: ${nav.url}${skillsInfo}</browser-context>`,
+				content: `<browser-context>Navigated to ${nav.title}${tabInfo}: ${nav.url}\n\n${skillsInfo}</browser-context>`,
 			} as Message);
 		} else if (m.role === "user") {
 			const { attachments, ...rest } = m as any;
