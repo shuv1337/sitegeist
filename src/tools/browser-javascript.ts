@@ -276,8 +276,7 @@ function securitySafeguards() {
 async function wrapperFunction() {
 	let timeoutId: number;
 
-	// Runtime providers will be injected here by buildWrapperCode()
-	// RUNTIME_PROVIDERS_PLACEHOLDER
+	// Runtime providers (bridge + data + runtimes) will be injected here by buildWrapperCode()
 
 	const cleanup = () => {
 		if (timeoutId) clearTimeout(timeoutId);
@@ -351,14 +350,13 @@ function buildWrapperCode(
 		);
 	}
 
-	// Inject RuntimeMessageBridge for user-script context
+	// Build provider injections (bridge + data + runtimes)
 	const bridgeCode = RuntimeMessageBridge.generateBridgeCode({
 		context: "user-script",
 		sandboxId: sandboxId,
 	});
 
-	// Inject provider data and runtimes
-	let providerInjections = `\n${bridgeCode}\n`;
+	let providerInjections = `${bridgeCode}\n`;
 
 	// Inject data from providers (e.g., window.artifacts = {...})
 	for (const provider of providers) {
@@ -369,14 +367,16 @@ function buildWrapperCode(
 	}
 
 	// Inject runtime functions from providers
-	providerInjections += `\n// Provider runtimes\n`;
 	for (const provider of providers) {
 		const runtimeFunc = provider.getRuntime();
-		providerInjections += `(${runtimeFunc.toString()})("${sandboxId}");\n`;
+		providerInjections += `(${runtimeFunc.toString()})(${JSON.stringify(sandboxId)});\n`;
 	}
 
-	// Replace RUNTIME_PROVIDERS_PLACEHOLDER with injected code
-	code = code.replace(/\/\/ RUNTIME_PROVIDERS_PLACEHOLDER/, providerInjections);
+	// Inject provider code after skill library
+	code = code.replace(
+		/async function wrapperFunction\(\) \{/,
+		`async function wrapperFunction() {\n${providerInjections}`,
+	);
 
 	// Replace USER_CODE_PLACEHOLDER with an async function containing the user code
 	code = code.replace(/USER_CODE_PLACEHOLDER/, `async () => { ${userCode} }`);
