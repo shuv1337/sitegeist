@@ -728,13 +728,29 @@ export class BrowserJavaScriptTool
 						console.warn("Failed to configure userScripts world:", e);
 					}
 
-					results = await browser.userScripts.execute({
+					// Race execution against abort signal
+					const executePromise = browser.userScripts.execute({
 						js: [{ code: wrapperCode }],
 						target: { tabId: tab.id },
 						world: "USER_SCRIPT",
 						worldId: sandboxId,
 						injectImmediately: true,
 					});
+
+					if (signal) {
+						const abortPromise = new Promise<never>((_, reject) => {
+							if (signal.aborted) {
+								reject(new Error("Aborted"));
+							} else {
+								signal.addEventListener("abort", () => {
+									reject(new Error("Aborted"));
+								});
+							}
+						});
+						results = await Promise.race([executePromise, abortPromise]);
+					} else {
+						results = await executePromise;
+					}
 				} else {
 					// Firefox doesn't have userScripts.execute() yet, and scripting.executeScript()
 					// cannot bypass page CSP to use eval. We have no workaround.
