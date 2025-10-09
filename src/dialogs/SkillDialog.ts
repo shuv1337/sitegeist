@@ -46,34 +46,40 @@ export class SkillDialog extends DialogBase {
 					<div class="mt-4 flex flex-col gap-4">
 
 						<!-- Description -->
-						${skill.description
-							? html`
+						${
+							skill.description
+								? html`
 									<div>
 										<div class="text-sm font-medium text-muted-foreground mb-2">Description</div>
 										<markdown-block .content=${skill.description}></markdown-block>
 									</div>
 							  `
-							: ""}
+								: ""
+						}
 
 						<!-- Examples -->
-						${skill.examples
-							? html`
+						${
+							skill.examples
+								? html`
 									<div>
 										<div class="text-sm font-medium text-muted-foreground mb-2">${i18n("Examples")}</div>
 										<code-block .code=${skill.examples} language="javascript"></code-block>
 									</div>
 							  `
-							: ""}
+								: ""
+						}
 
 						<!-- Library Code -->
-						${skill.library
-							? html`
+						${
+							skill.library
+								? html`
 									<div>
 										<div class="text-sm font-medium text-muted-foreground mb-2">${i18n("Library")}</div>
 										<code-block .code=${skill.library} language="javascript"></code-block>
 									</div>
 							  `
-							: ""}
+								: ""
+						}
 					</div>
 				</div>
 			</div>

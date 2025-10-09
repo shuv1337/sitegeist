@@ -1,12 +1,21 @@
 import { html, i18n, icon, type TemplateResult } from "@mariozechner/mini-lit";
 import "@mariozechner/mini-lit/dist/MarkdownBlock.js";
-import { type AgentTool, StringEnum, type ToolResultMessage } from "@mariozechner/pi-ai";
-import { registerToolRenderer, renderHeader, SandboxIframe, type ToolRenderer } from "@mariozechner/pi-web-ui";
+import {
+	type AgentTool,
+	StringEnum,
+	type ToolResultMessage,
+} from "@mariozechner/pi-ai";
+import {
+	registerToolRenderer,
+	renderHeader,
+	SandboxIframe,
+	type ToolRenderer,
+} from "@mariozechner/pi-web-ui";
 import { type Static, Type } from "@sinclair/typebox";
 import { Sparkles } from "lucide";
 import { DomainPill } from "../components/DomainPill.js";
-import { SKILL_TOOL_DESCRIPTION } from "../prompts/tool-prompts.js";
 import { SkillPill } from "../components/SkillPill.js";
+import { SKILL_TOOL_DESCRIPTION } from "../prompts/tool-prompts.js";
 import { getSitegeistStorage } from "../storage/app-storage.js";
 import type { Skill } from "../storage/stores/skills-store.js";
 
@@ -25,14 +34,20 @@ const getSandboxUrl = () => {
  * Validate JavaScript syntax using sandboxed iframe (CSP-compliant).
  * Returns { valid: true } or { valid: false, error: string }
  */
-async function validateJavaScriptSyntax(code: string): Promise<{ valid: boolean; error?: string }> {
+async function validateJavaScriptSyntax(
+	code: string,
+): Promise<{ valid: boolean; error?: string }> {
 	const sandbox = new SandboxIframe();
 	sandbox.sandboxUrlProvider = getSandboxUrl;
 	sandbox.style.display = "none";
 	document.body.appendChild(sandbox);
 
 	try {
-		const result = await sandbox.execute(`syntax-check-${Date.now()}`, code, []);
+		const result = await sandbox.execute(
+			`syntax-check-${Date.now()}`,
+			code,
+			[],
+		);
 		sandbox.remove();
 
 		if (!result.success && result.error) {
@@ -51,20 +66,39 @@ const skillParamsSchema = Type.Object({
 	action: StringEnum(["get", "list", "create", "update", "delete"], {
 		description: "Action to perform",
 	}),
-	name: Type.Optional(Type.String({ description: "Skill name (required for get/update/delete)" })),
-	url: Type.Optional(Type.String({ description: "URL to filter skills by domain (optional for list action, defaults to current tab URL)" })),
-	includeLibraryCode: Type.Optional(Type.Boolean({
-		description: "Use with 'get' action to include full library code in output (only necessary if you want to make changes to the library code of a skill)"
-	})),
+	name: Type.Optional(
+		Type.String({ description: "Skill name (required for get/update/delete)" }),
+	),
+	url: Type.Optional(
+		Type.String({
+			description:
+				"URL to filter skills by domain (optional for list action, defaults to current tab URL)",
+		}),
+	),
+	includeLibraryCode: Type.Optional(
+		Type.Boolean({
+			description:
+				"Use with 'get' action to include full library code in output (only necessary if you want to make changes to the library code of a skill)",
+		}),
+	),
 	data: Type.Optional(
 		Type.Object({
 			name: Type.String({ description: "Unique skill name" }),
 			domainPatterns: Type.Array(Type.String(), {
-				description: "Array of glob patterns (e.g., ['youtube.com', 'youtu.be'] or ['github.com', 'github.com/*/issues']). Include short URLs and domain variations!"
+				description:
+					"Array of glob patterns (e.g., ['youtube.com', 'youtu.be'] or ['github.com', 'github.com/*/issues']). Include short URLs and domain variations!",
 			}),
-			shortDescription: Type.String({ description: "Brief one-line plain text description" }),
-			description: Type.String({ description: "Full markdown description (include gotchas/limitations, use markdown formatting)" }),
-			examples: Type.String({ description: "Plain JavaScript code examples (will be rendered in code block)" }),
+			shortDescription: Type.String({
+				description: "Brief one-line plain text description",
+			}),
+			description: Type.String({
+				description:
+					"Full markdown description (include gotchas/limitations, use markdown formatting)",
+			}),
+			examples: Type.String({
+				description:
+					"Plain JavaScript code examples (will be rendered in code block)",
+			}),
 			library: Type.String({ description: "JavaScript code to inject" }),
 		}),
 	),
@@ -80,13 +114,20 @@ export const skillTool: AgentTool<typeof skillParamsSchema, any> = {
 	execute: async (_toolCallId: string, args: SkillParams) => {
 		try {
 			const skillsRepo = getSkills();
-			const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+			const [tab] = await browser.tabs.query({
+				active: true,
+				currentWindow: true,
+			});
 			const currentUrl = tab?.url || "";
 
 			switch (args.action) {
 				case "get": {
 					if (!args.name) {
-						return { output: "Missing 'name' parameter for get action.", isError: true, details: {} };
+						return {
+							output: "Missing 'name' parameter for get action.",
+							isError: true,
+							details: {},
+						};
 					}
 
 					const skill = await skillsRepo.getSkill(args.name);
@@ -94,9 +135,15 @@ export const skillTool: AgentTool<typeof skillParamsSchema, any> = {
 						// Return list of available skills for current domain
 						const available = await skillsRepo.listSkills(currentUrl);
 						if (available.length === 0) {
-							return { output: `Skill '${args.name}' not found. No skills available for current domain.`, isError: true, details: {} };
+							return {
+								output: `Skill '${args.name}' not found. No skills available for current domain.`,
+								isError: true,
+								details: {},
+							};
 						}
-						const list = available.map((s) => `${s.name}: ${s.shortDescription}`).join("\n");
+						const list = available
+							.map((s) => `${s.name}: ${s.shortDescription}`)
+							.join("\n");
 						return {
 							output: `Skill '${args.name}' not found. Available skills:\n${list}`,
 							isError: true,
@@ -125,34 +172,59 @@ export const skillTool: AgentTool<typeof skillParamsSchema, any> = {
 					// args.url === undefined -> use current tab URL (default)
 					// args.url === "" -> list ALL skills (no filtering)
 					// args.url === "https://..." -> use specified URL
-					const filterUrl = args.url === undefined ? currentUrl : args.url === "" ? undefined : args.url;
+					const filterUrl =
+						args.url === undefined
+							? currentUrl
+							: args.url === ""
+								? undefined
+								: args.url;
 
 					const skillList = await skillsRepo.listSkills(filterUrl);
 					if (skillList.length === 0) {
-						const msg = filterUrl ? "No skills found for specified domain." : "No skills found.";
+						const msg = filterUrl
+							? "No skills found for specified domain."
+							: "No skills found.";
 						return { output: msg, isError: false, details: { skills: [] } };
 					}
 
 					// Token-efficient list for LLM: name: short description
-					const llmOutput = skillList.map((s) => `${s.name}: ${s.shortDescription}`).join("\n");
-					return { output: llmOutput, isError: false, details: { skills: skillList } };
+					const llmOutput = skillList
+						.map((s) => `${s.name}: ${s.shortDescription}`)
+						.join("\n");
+					return {
+						output: llmOutput,
+						isError: false,
+						details: { skills: skillList },
+					};
 				}
 
 				case "create": {
 					if (!args.data) {
-						return { output: "Missing 'data' parameter for create.", isError: true, details: {} };
+						return {
+							output: "Missing 'data' parameter for create.",
+							isError: true,
+							details: {},
+						};
 					}
 
 					// Check if already exists
 					const existing = await skillsRepo.getSkill(args.data.name);
 					if (existing) {
-						return { output: `Skill '${args.data.name}' already exists. Use update action to modify.`, isError: true, details: {} };
+						return {
+							output: `Skill '${args.data.name}' already exists. Use update action to modify.`,
+							isError: true,
+							details: {},
+						};
 					}
 
 					// Validate syntax using sandboxed iframe (CSP-compliant)
 					const validation = await validateJavaScriptSyntax(args.data.library);
 					if (!validation.valid) {
-						return { output: `Syntax error in library: ${validation.error}`, isError: true, details: {} };
+						return {
+							output: `Syntax error in library: ${validation.error}`,
+							isError: true,
+							details: {},
+						};
 					}
 
 					const now = new Date().toISOString();
@@ -178,22 +250,40 @@ export const skillTool: AgentTool<typeof skillParamsSchema, any> = {
 
 				case "update": {
 					if (!args.name) {
-						return { output: "Missing 'name' parameter for update.", isError: true, details: {} };
+						return {
+							output: "Missing 'name' parameter for update.",
+							isError: true,
+							details: {},
+						};
 					}
 					if (!args.data) {
-						return { output: "Missing 'data' parameter for update.", isError: true, details: {} };
+						return {
+							output: "Missing 'data' parameter for update.",
+							isError: true,
+							details: {},
+						};
 					}
 
 					const existing = await skillsRepo.getSkill(args.name);
 					if (!existing) {
-						return { output: `Skill '${args.name}' not found. Use create action.`, isError: true, details: {} };
+						return {
+							output: `Skill '${args.name}' not found. Use create action.`,
+							isError: true,
+							details: {},
+						};
 					}
 
 					// Validate library syntax if provided (using sandboxed iframe)
 					if (args.data.library) {
-						const validation = await validateJavaScriptSyntax(args.data.library);
+						const validation = await validateJavaScriptSyntax(
+							args.data.library,
+						);
 						if (!validation.valid) {
-							return { output: `Syntax error in library: ${validation.error}`, isError: true, details: {} };
+							return {
+								output: `Syntax error in library: ${validation.error}`,
+								isError: true,
+								details: {},
+							};
 						}
 					}
 
@@ -211,26 +301,42 @@ export const skillTool: AgentTool<typeof skillParamsSchema, any> = {
 					return {
 						output: `Skill '${args.name}' updated.`,
 						isError: false,
-						details: updated
+						details: updated,
 					};
 				}
 
 				case "delete": {
 					if (!args.name) {
-						return { output: "Missing 'name' parameter for delete.", isError: true, details: {} };
+						return {
+							output: "Missing 'name' parameter for delete.",
+							isError: true,
+							details: {},
+						};
 					}
 
 					const existing = await skillsRepo.getSkill(args.name);
 					if (!existing) {
-						return { output: `Skill '${args.name}' not found.`, isError: false, details: {} };
+						return {
+							output: `Skill '${args.name}' not found.`,
+							isError: false,
+							details: {},
+						};
 					}
 
 					await skillsRepo.deleteSkill(args.name);
-					return { output: `Skill '${args.name}' deleted.`, isError: false, details: { name: args.name } };
+					return {
+						output: `Skill '${args.name}' deleted.`,
+						isError: false,
+						details: { name: args.name },
+					};
 				}
 
 				default:
-					return { output: `Unknown action: ${(args as any).action}`, isError: true, details: {} };
+					return {
+						output: `Unknown action: ${(args as any).action}`,
+						isError: true,
+						details: {},
+					};
 			}
 		} catch (error: any) {
 			return { output: `Error: ${error.message}`, isError: true, details: {} };
@@ -250,33 +356,51 @@ interface SkillResultDetails {
 }
 
 export const skillRenderer: ToolRenderer<SkillParams, SkillResultDetails> = {
-	render(params: SkillParams | undefined, result: ToolResultMessage<SkillResultDetails> | undefined): TemplateResult {
-		const state = result ? (result.isError ? "error" : "complete") : "inprogress";
+	render(
+		params: SkillParams | undefined,
+		result: ToolResultMessage<SkillResultDetails> | undefined,
+	): TemplateResult {
+		const state = result
+			? result.isError
+				? "error"
+				: "complete"
+			: "inprogress";
 
 		// Helper to render domain pills
 		const renderDomainPills = (patterns: string[]) => html`
 			<div class="flex flex-wrap gap-2">
-				${patterns.map(pattern => DomainPill(pattern))}
+				${patterns.map((pattern) => DomainPill(pattern))}
 			</div>
 		`;
 
 		// Helper to render skill fields (used by create/update/get)
-		const renderSkillFields = (skill: Partial<Skill>, showLibrary: boolean) => html`
+		const renderSkillFields = (
+			skill: Partial<Skill>,
+			showLibrary: boolean,
+		) => html`
 			${skill.domainPatterns?.length ? renderDomainPills(skill.domainPatterns) : ""}
 			${skill.shortDescription ? html`<div class="text-sm text-muted-foreground">${skill.shortDescription}</div>` : ""}
 			${skill.description ? html`<markdown-block .content=${skill.description}></markdown-block>` : ""}
-			${skill.examples ? html`
+			${
+				skill.examples
+					? html`
 				<div class="space-y-2">
 					<div class="text-sm font-medium text-muted-foreground">${i18n("Examples")}</div>
 					<code-block .code=${skill.examples} language="javascript"></code-block>
 				</div>
-			` : ""}
-			${showLibrary && skill.library ? html`
+			`
+					: ""
+			}
+			${
+				showLibrary && skill.library
+					? html`
 				<div class="space-y-2">
 					<div class="text-sm font-medium text-muted-foreground">${i18n("Library")}</div>
 					<code-block .code=${skill.library} language="javascript"></code-block>
 				</div>
-			` : ""}
+			`
+					: ""
+			}
 		`;
 
 		// Error handling
@@ -290,7 +414,9 @@ export const skillRenderer: ToolRenderer<SkillParams, SkillResultDetails> = {
 				update: i18n("Updating skill"),
 				delete: i18n("Deleting skill"),
 			};
-			const headerText = skillName ? `${labels[action!] || action} ${skillName}` : labels[action!] || action || "";
+			const headerText = skillName
+				? `${labels[action!] || action} ${skillName}`
+				: labels[action!] || action || "";
 
 			// For create/update errors, show partial skill data with error at bottom
 			if ((action === "create" || action === "update") && params?.data) {
@@ -367,7 +493,7 @@ export const skillRenderer: ToolRenderer<SkillParams, SkillResultDetails> = {
 								${domain ? DomainPill(domain) : ""}
 							</div>
 							<div class="flex flex-wrap gap-2">
-								${skills.map(s => SkillPill(s, true))}
+								${skills.map((s) => SkillPill(s, true))}
 							</div>
 						</div>
 					`;
@@ -383,9 +509,14 @@ export const skillRenderer: ToolRenderer<SkillParams, SkillResultDetails> = {
 						return renderHeader(state, Sparkles, i18n("Processing skill..."));
 					}
 
-					const headerText = action === "create"
-						? (state === "complete" ? i18n("Created skill") : i18n("Creating skill"))
-						: (state === "complete" ? i18n("Updated skill") : i18n("Updating skill"));
+					const headerText =
+						action === "create"
+							? state === "complete"
+								? i18n("Created skill")
+								: i18n("Creating skill")
+							: state === "complete"
+								? i18n("Updated skill")
+								: i18n("Updating skill");
 
 					return html`
 						<div class="space-y-3">
@@ -443,10 +574,6 @@ export const skillRenderer: ToolRenderer<SkillParams, SkillResultDetails> = {
 						</div>
 					`;
 				}
-
-				case "get":
-				case "list":
-				case "delete":
 				default: {
 					const skillName = name || data?.name;
 					const labels: Record<string, string> = {
@@ -454,7 +581,9 @@ export const skillRenderer: ToolRenderer<SkillParams, SkillResultDetails> = {
 						list: i18n("Listing skills"),
 						delete: i18n("Deleting skill"),
 					};
-					const headerText = skillName ? `${labels[action] || action} ${skillName}` : labels[action] || action || "";
+					const headerText = skillName
+						? `${labels[action] || action} ${skillName}`
+						: labels[action] || action || "";
 					return renderHeader(state, Sparkles, headerText);
 				}
 			}

@@ -16,5 +16,9 @@ registerToolRenderer("bash", new BashRenderer());
 
 // Re-export for convenience
 export { createJavaScriptReplTool, javascriptReplTool };
-export { BrowserJavaScriptTool, browserJavaScriptTool, requestUserScriptsPermission } from "./browser-javascript.js";
+export {
+	BrowserJavaScriptTool,
+	browserJavaScriptTool,
+	requestUserScriptsPermission,
+} from "./browser-javascript.js";
 export { skillTool } from "./skill.js";

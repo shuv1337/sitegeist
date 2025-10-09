@@ -26,8 +26,8 @@ declare module "@mariozechner/mini-lit" {
 		"No skills found": string;
 		"Skills for domain": string;
 		"Deleted skill": string;
-		"Examples": string;
-		"Library": string;
+		Examples: string;
+		Library: string;
 		"Command failed:": string;
 		"Why is this needed?": string;
 		"What this means:": string;
@@ -40,7 +40,8 @@ declare module "@mariozechner/mini-lit" {
 const sitegeistTranslations = {
 	en: {
 		"Permission request failed": "Permission request failed",
-		"JavaScript Execution Permission Required": "JavaScript Execution Permission Required",
+		"JavaScript Execution Permission Required":
+			"JavaScript Execution Permission Required",
 		"This extension needs permission to execute JavaScript code on web pages":
 			"This extension needs permission to execute JavaScript code on web pages",
 		"The browser_javascript tool allows the AI to read and interact with web pages on your behalf. This requires the userScripts permission to execute code safely and securely.":
@@ -49,7 +50,8 @@ const sitegeistTranslations = {
 			"The AI can read and modify web page content when you ask it to",
 		"Code runs in an isolated environment with security safeguards":
 			"Code runs in an isolated environment with security safeguards",
-		"Network access is blocked to prevent data exfiltration": "Network access is blocked to prevent data exfiltration",
+		"Network access is blocked to prevent data exfiltration":
+			"Network access is blocked to prevent data exfiltration",
 		"You can revoke this permission at any time in browser settings":
 			"You can revoke this permission at any time in browser settings",
 		"Writing JavaScript code...": "Writing JavaScript code...",
@@ -67,8 +69,8 @@ const sitegeistTranslations = {
 		"No skills found": "No skills found",
 		"Skills for domain": "Skills for domain",
 		"Deleted skill": "Deleted skill",
-		"Examples": "Examples",
-		"Library": "Library",
+		Examples: "Examples",
+		Library: "Library",
 		"Command failed:": "Command failed:",
 		"Why is this needed?": "Why is this needed?",
 		"What this means:": "What this means:",
@@ -78,7 +80,8 @@ const sitegeistTranslations = {
 	},
 	de: {
 		"Permission request failed": "Berechtigungsanfrage fehlgeschlagen",
-		"JavaScript Execution Permission Required": "JavaScript-Ausführungsberechtigung erforderlich",
+		"JavaScript Execution Permission Required":
+			"JavaScript-Ausführungsberechtigung erforderlich",
 		"This extension needs permission to execute JavaScript code on web pages":
 			"Diese Erweiterung benötigt die Berechtigung, JavaScript-Code auf Webseiten auszuführen",
 		"The browser_javascript tool allows the AI to read and interact with web pages on your behalf. This requires the userScripts permission to execute code safely and securely.":
@@ -106,8 +109,8 @@ const sitegeistTranslations = {
 		"No skills found": "Keine Skills gefunden",
 		"Skills for domain": "Skills für Domain",
 		"Deleted skill": "Skill gelöscht",
-		"Examples": "Beispiele",
-		"Library": "Bibliothek",
+		Examples: "Beispiele",
+		Library: "Bibliothek",
 		"Command failed:": "Befehl fehlgeschlagen:",
 		"Why is this needed?": "Warum ist das notwendig?",
 		"What this means:": "Was das bedeutet:",

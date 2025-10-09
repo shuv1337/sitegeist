@@ -24,7 +24,7 @@ const connectWebSocket = () => {
 			// Reconnect after 2 seconds
 			setTimeout(connectWebSocket, 2000);
 		};
-	} catch (e) {
+	} catch (_e) {
 		// Silent fail if WebSocket not available
 	}
 };

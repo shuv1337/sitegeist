@@ -2,16 +2,22 @@ import { html, i18n, type TemplateResult } from "@mariozechner/mini-lit";
 import type { AgentTool, ToolResultMessage } from "@mariozechner/pi-ai";
 import {
 	type Agent,
-	type Attachment,
 	type ArtifactsPanel,
+	ArtifactsRuntimeProvider,
+	type Attachment,
+	type ConsoleLog,
+	ConsoleRuntimeProvider,
+	FileDownloadRuntimeProvider,
+	RUNTIME_MESSAGE_ROUTER,
+	RuntimeMessageBridge,
 	registerToolRenderer,
 	renderCollapsibleHeader,
 	renderHeader,
+	type SandboxRuntimeProvider,
 	type ToolRenderer,
 } from "@mariozechner/pi-web-ui";
-import { createRef } from "lit/directives/ref.js";
-import { ref } from "lit/directives/ref.js";
 import { type Static, Type } from "@sinclair/typebox";
+import { createRef, ref } from "lit/directives/ref.js";
 import "@mariozechner/pi-web-ui"; // Ensure all components are registered
 import { Globe } from "lucide";
 import { BROWSER_JAVASCRIPT_DESCRIPTION } from "../prompts/tool-prompts.js";
@@ -135,7 +141,7 @@ function securitySafeguards() {
 
 	// Block document.createElement for iframes, frames, objects, embeds
 	const originalCreateElement = document.createElement.bind(document);
-	document.createElement = function (tagName: string, options?: any) {
+	document.createElement = ((tagName: string, options?: any) => {
 		const tag = tagName.toLowerCase();
 		if (
 			tag === "iframe" ||
@@ -143,18 +149,18 @@ function securitySafeguards() {
 			tag === "object" ||
 			tag === "embed"
 		) {
-			throw new Error("Creating " + tag + " elements is blocked for security");
+			throw new Error(`Creating ${tag} elements is blocked for security`);
 		}
 		return originalCreateElement(tagName, options);
-	} as any;
+	}) as any;
 
 	// Block createElementNS (for SVG/XML iframes)
 	const originalCreateElementNS = document.createElementNS.bind(document);
-	document.createElementNS = function (
+	document.createElementNS = ((
 		namespaceURI: string,
 		qualifiedName: string,
 		options?: any,
-	) {
+	) => {
 		const tag = qualifiedName.toLowerCase();
 		if (
 			tag === "iframe" ||
@@ -162,10 +168,10 @@ function securitySafeguards() {
 			tag === "object" ||
 			tag === "embed"
 		) {
-			throw new Error("Creating " + tag + " elements is blocked for security");
+			throw new Error(`Creating ${tag} elements is blocked for security`);
 		}
 		return originalCreateElementNS(namespaceURI, qualifiedName, options);
-	} as any;
+	}) as any;
 
 	// Block innerHTML/outerHTML that could inject iframes
 	const blockIframeHTML = (value: string) => {
@@ -185,7 +191,7 @@ function securitySafeguards() {
 	Object.defineProperty(Element.prototype, "innerHTML", {
 		set: function (value: string) {
 			blockIframeHTML(value);
-			originalInnerHTMLDesc.set!.call(this, value);
+			originalInnerHTMLDesc.set?.call(this, value);
 		},
 		get: originalInnerHTMLDesc.get,
 	});
@@ -198,7 +204,7 @@ function securitySafeguards() {
 	Object.defineProperty(Element.prototype, "outerHTML", {
 		set: function (value: string) {
 			blockIframeHTML(value);
-			originalOuterHTMLDesc.set!.call(this, value);
+			originalOuterHTMLDesc.set?.call(this, value);
 		},
 		get: originalOuterHTMLDesc.get,
 	});
@@ -229,7 +235,7 @@ function securitySafeguards() {
 					get: function () {
 						return this.getAttribute("src");
 					},
-					set: function () {
+					set: () => {
 						throw new Error(
 							"Modifying iframe/frame/object/embed src is blocked for security",
 						);
@@ -239,7 +245,7 @@ function securitySafeguards() {
 
 				// Also block setAttribute for src
 				const originalSetAttribute = element.setAttribute.bind(element);
-				element.setAttribute = function (name: string, value: string) {
+				element.setAttribute = (name: string, value: string) => {
 					if (name.toLowerCase() === "src") {
 						throw new Error(
 							"Modifying iframe/frame/object/embed src is blocked for security",
@@ -247,11 +253,11 @@ function securitySafeguards() {
 					}
 					return originalSetAttribute(name, value);
 				};
-			} catch (e) {
+			} catch (_e) {
 				// Ignore errors for individual elements (may be cross-origin or protected)
 			}
 		});
-	} catch (e) {
+	} catch (_e) {
 		// Ignore if querySelectorAll fails
 	}
 
@@ -268,171 +274,14 @@ function securitySafeguards() {
 
 // Wrapper function that executes user code - will be converted to string with .toString()
 async function wrapperFunction() {
-	// Capture console output
-	const consoleOutput: Array<{ type: string; args: unknown[] }> = [];
-	const files: Array<{
-		fileName: string;
-		content: string | Uint8Array;
-		mimeType: string;
-	}> = [];
 	let timeoutId: number;
 
-	const originalConsole = {
-		log: console.log,
-		warn: console.warn,
-		error: console.error,
-	};
-
-	// Override console methods to capture output
-	console.log = (...args: unknown[]) => {
-		consoleOutput.push({ type: "log", args });
-		originalConsole.log(...args);
-	};
-	console.warn = (...args: unknown[]) => {
-		consoleOutput.push({ type: "warn", args });
-		originalConsole.warn(...args);
-	};
-	console.error = (...args: unknown[]) => {
-		consoleOutput.push({ type: "error", args });
-		originalConsole.error(...args);
-	};
-
-	// Create returnFile function
-	(window as any).returnFile = async (
-		fileName: string,
-		content: string | Uint8Array | Blob | Record<string, unknown>,
-		mimeType?: string,
-	) => {
-		let finalContent: string | Uint8Array;
-		let finalMimeType: string;
-
-		if (content instanceof Blob) {
-			const arrayBuffer = await content.arrayBuffer();
-			finalContent = new Uint8Array(arrayBuffer);
-			finalMimeType = mimeType || content.type || "application/octet-stream";
-			if (!mimeType && !content.type) {
-				throw new Error(
-					`returnFile: MIME type is required for Blob content. Please provide a mimeType parameter (e.g., "image/png").`,
-				);
-			}
-		} else if (content instanceof Uint8Array) {
-			finalContent = content;
-			if (!mimeType) {
-				throw new Error(
-					`returnFile: MIME type is required for Uint8Array content. Please provide a mimeType parameter (e.g., "image/png").`,
-				);
-			}
-			finalMimeType = mimeType;
-		} else if (typeof content === "string") {
-			finalContent = content;
-			finalMimeType = mimeType || "text/plain";
-		} else {
-			finalContent = JSON.stringify(content, null, 2);
-			finalMimeType = mimeType || "application/json";
-		}
-
-		files.push({ fileName, content: finalContent, mimeType: finalMimeType });
-	};
-
-	// Artifact management functions using chrome.runtime.sendMessage for real-time communication
-	(window as any).hasArtifact = async (filename: string): Promise<boolean> => {
-		const response = await chrome.runtime.sendMessage({
-			type: "artifact-operation",
-			action: "has",
-			filename,
-		});
-		if (response.error) throw new Error(response.error);
-		return response.result;
-	};
-
-	(window as any).getArtifact = async (filename: string): Promise<any> => {
-		const response = await chrome.runtime.sendMessage({
-			type: "artifact-operation",
-			action: "get",
-			filename,
-		});
-		if (response.error) throw new Error(response.error);
-		// Auto-parse .json files
-		if (filename.endsWith(".json")) {
-			try {
-				return JSON.parse(response.result);
-			} catch (e) {
-				throw new Error(`Failed to parse JSON from ${filename}: ${e}`);
-			}
-		}
-		return response.result;
-	};
-
-	(window as any).createArtifact = async (
-		filename: string,
-		content: string | Record<string, unknown>,
-	): Promise<void> => {
-		let finalContent = content;
-		console.log("Creating artifact:", filename, content);
-
-		// Auto-stringify .json files
-		if (filename.endsWith(".json") && typeof content !== "string") {
-			finalContent = JSON.stringify(content, null, 2);
-		} else if (typeof content === "string") {
-			finalContent = content;
-		} else {
-			throw new Error("createArtifact: Content must be a string or object for .json files. Encode binary files as base64 data URLs.");
-		}
-
-		const response = await chrome.runtime.sendMessage({
-			type: "artifact-operation",
-			action: "create",
-			filename,
-			content: finalContent,
-		});
-		if (response.error) throw new Error(response.error);
-	};
-
-	(window as any).updateArtifact = async (
-		filename: string,
-		content: string | Record<string, unknown>,
-	): Promise<void> => {
-		let finalContent = content;
-		console.log("Updating artifact:", filename, content);
-
-		// Auto-stringify .json files
-		if (filename.endsWith(".json") && typeof content !== "string") {
-			finalContent = JSON.stringify(content, null, 2);
-		} else if (typeof content === "string") {
-			finalContent = content;
-		} else {
-			throw new Error("updateArtifact: Content must be a string or object for .json files. Encode binary files as base64 data URLs.");
-		}
-
-		const response = await chrome.runtime.sendMessage({
-			type: "artifact-operation",
-			action: "update",
-			filename,
-			content: finalContent,
-		});
-		if (response.error) throw new Error(response.error);
-	};
-
-	(window as any).deleteArtifact = async (filename: string): Promise<void> => {
-		const response = await chrome.runtime.sendMessage({
-			type: "artifact-operation",
-			action: "delete",
-			filename,
-		});
-		if (response.error) throw new Error(response.error);
-	};
+	// Runtime providers will be injected here by buildWrapperCode()
+	// RUNTIME_PROVIDERS_PLACEHOLDER
 
 	const cleanup = () => {
 		if (timeoutId) clearTimeout(timeoutId);
-		console.log = originalConsole.log;
-		console.warn = originalConsole.warn;
-		console.error = originalConsole.error;
-		delete (window as any).returnFile;
-		delete (window as any).hasArtifact;
-		delete (window as any).getArtifact;
-		delete (window as any).createArtifact;
-		delete (window as any).updateArtifact;
-		delete (window as any).deleteArtifact;
+		// Runtime provider cleanup will be handled automatically
 	};
 
 	try {
@@ -459,8 +308,6 @@ async function wrapperFunction() {
 		cleanup();
 		return {
 			success: true,
-			console: consoleOutput,
-			files: files,
 			lastValue: lastValue,
 		};
 	} catch (error: any) {
@@ -469,7 +316,6 @@ async function wrapperFunction() {
 			success: false,
 			error: error.message,
 			stack: error.stack,
-			console: consoleOutput,
 		};
 	}
 }
@@ -479,6 +325,8 @@ function buildWrapperCode(
 	userCode: string,
 	skillLibrary: string,
 	enableSafeguards: boolean,
+	providers: SandboxRuntimeProvider[],
+	sandboxId: string,
 ): string {
 	// No escaping needed - we're injecting raw code into a function body
 	let code = `(${wrapperFunction.toString()})`;
@@ -503,11 +351,190 @@ function buildWrapperCode(
 		);
 	}
 
+	// Inject RuntimeMessageBridge for user-script context
+	const bridgeCode = RuntimeMessageBridge.generateBridgeCode({
+		context: "user-script",
+		sandboxId: sandboxId,
+	});
+
+	// Inject provider data and runtimes
+	let providerInjections = `\n${bridgeCode}\n`;
+
+	// Inject data from providers (e.g., window.artifacts = {...})
+	for (const provider of providers) {
+		const data = provider.getData();
+		for (const [key, value] of Object.entries(data)) {
+			providerInjections += `window.${key} = ${JSON.stringify(value)};\n`;
+		}
+	}
+
+	// Inject runtime functions from providers
+	providerInjections += `\n// Provider runtimes\n`;
+	for (const provider of providers) {
+		const runtimeFunc = provider.getRuntime();
+		providerInjections += `(${runtimeFunc.toString()})("${sandboxId}");\n`;
+	}
+
+	// Replace RUNTIME_PROVIDERS_PLACEHOLDER with injected code
+	code = code.replace(/\/\/ RUNTIME_PROVIDERS_PLACEHOLDER/, providerInjections);
+
 	// Replace USER_CODE_PLACEHOLDER with an async function containing the user code
 	code = code.replace(/USER_CODE_PLACEHOLDER/, `async () => { ${userCode} }`);
 
 	// Call the function immediately
 	return `${code}()`;
+}
+
+/**
+ * Format console log entry with appropriate prefix
+ */
+function formatConsoleEntry(entry: ConsoleLog, includeLog = false): string {
+	const prefix =
+		entry.type === "error"
+			? "[ERROR]"
+			: entry.type === "warn"
+				? "[WARN]"
+				: entry.type === "info"
+					? "[INFO]"
+					: includeLog
+						? "[LOG]"
+						: "";
+	const text = entry.args ? entry.args.join(" ") : entry.text;
+	return prefix ? `${prefix} ${text}` : text;
+}
+
+/**
+ * Check if userScripts API is available, and provide helpful error messages if not.
+ * For Firefox, attempts to request the permission if not granted.
+ */
+async function checkUserScriptsAvailability(): Promise<{
+	available: boolean;
+	message?: string;
+	shouldRetry?: boolean;
+}> {
+	if (browser.userScripts) {
+		return { available: true };
+	}
+
+	const chromeVersion = Number(
+		navigator.userAgent.match(/(Chrome|Chromium)\/([0-9]+)/)?.[2],
+	);
+	const isChrome = chromeVersion > 0;
+	const isFirefox = !isChrome;
+
+	// Firefox: Try to request userScripts permission if not granted
+	if (isFirefox && browser.permissions) {
+		try {
+			const hasPermission = await browser.permissions.contains({
+				permissions: ["userScripts"],
+			});
+			if (!hasPermission) {
+				const granted = await browser.permissions.request({
+					permissions: ["userScripts"],
+				});
+				if (!granted) {
+					return {
+						available: false,
+						message:
+							"Error: userScripts permission denied.\n\nThe userScripts permission is required to execute JavaScript code safely.\nPlease allow the permission when prompted.",
+					};
+				}
+				// Permission was just granted, but API might not be available yet
+				return {
+					available: false,
+					message:
+						"userScripts permission granted! Please try your request again.",
+					shouldRetry: true,
+				};
+			}
+		} catch {
+			// Permission request failed or not supported
+		}
+	}
+
+	let errorMessage = "Error: browser.userScripts API is not available.\n\n";
+
+	if (isChrome && chromeVersion >= 138) {
+		errorMessage += `Chrome ${chromeVersion} detected. To enable User Scripts:\n\n`;
+		errorMessage += "1. Go to chrome://extensions/\n";
+		errorMessage += "2. Find this extension and click 'Details'\n";
+		errorMessage += "3. Enable the 'Allow User Scripts' toggle\n";
+		errorMessage += "4. Refresh the page and try again";
+	} else if (isChrome && chromeVersion >= 120) {
+		errorMessage += `Chrome ${chromeVersion} detected. To enable User Scripts:\n\n`;
+		errorMessage += "1. Go to chrome://extensions/\n";
+		errorMessage += "2. Enable 'Developer mode' toggle in the top right\n";
+		errorMessage += "3. Refresh the page and try again";
+	} else if (isChrome) {
+		errorMessage += `Chrome ${chromeVersion} detected, but User Scripts requires Chrome 120+.\n`;
+		errorMessage += "Please update Chrome or use a different browser.";
+	} else {
+		errorMessage +=
+			"This requires Chrome 120+ or Firefox with userScripts support.";
+	}
+
+	return {
+		available: false,
+		message: errorMessage,
+	};
+}
+
+/**
+ * Validates browser JavaScript code for navigation commands.
+ * Navigation commands destroy the execution context, so they must be isolated.
+ */
+function validateBrowserJavaScript(code: string): {
+	valid: boolean;
+	error?: string;
+} {
+	// Check if code contains navigation that will destroy execution context
+	const navigationRegex =
+		/\b(window\.location\s*=|location\.href\s*=|history\.(back|forward|go)\s*\(|window\.open\s*\(|document\.location\s*=)/;
+	const navigationMatch = code.match(navigationRegex);
+
+	if (!navigationMatch) {
+		return { valid: true };
+	}
+
+	// Extract just the navigation command if found
+	let navigationCommand: string | null = null;
+	const lines = code.split("\n");
+	for (const line of lines) {
+		if (navigationRegex.test(line)) {
+			navigationCommand = line.trim();
+			break;
+		}
+	}
+
+	// If navigation is detected and there's other code around it, reject and ask for split
+	const codeWithoutComments = code
+		.replace(/\/\/.*$/gm, "")
+		.replace(/\/\*[\s\S]*?\*\//g, "")
+		.trim();
+	const codeLines = codeWithoutComments
+		.split("\n")
+		.filter((line) => line.trim().length > 0);
+
+	// If there's more than just the navigation line, reject
+	if (codeLines.length > 1) {
+		return {
+			valid: false,
+			error: `⚠️ Navigation command detected in multi-line code block.
+
+Navigation commands (history.back/forward/go, window.location assignment, etc.) destroy the execution context, so any code before or after them may not execute properly.
+
+Please split this into TWO separate tool calls:
+
+1. First tool call - navigation only:
+${navigationCommand}
+
+2. Second tool call - everything else (will run on the new page after navigation completes)
+
+This ensures reliable execution.`,
+		};
+	}
+
+	return { valid: true };
 }
 
 const browserJavaScriptSchema = Type.Object({
@@ -560,53 +587,14 @@ export class BrowserJavaScriptTool
 				};
 			}
 
-			// Check if code contains navigation that will destroy execution context
-			const navigationRegex =
-				/\b(window\.location\s*=|location\.href\s*=|history\.(back|forward|go)\s*\(|window\.open\s*\(|document\.location\s*=)/;
-			const navigationMatch = args.code.match(navigationRegex);
-
-			// Extract just the navigation command if found
-			let navigationCommand: string | null = null;
-			if (navigationMatch) {
-				// Find the line containing the navigation
-				const lines = args.code.split("\n");
-				for (const line of lines) {
-					if (navigationRegex.test(line)) {
-						navigationCommand = line.trim();
-						break;
-					}
-				}
-			}
-
-			// If navigation is detected and there's other code around it, reject and ask for split
-			if (navigationMatch) {
-				const codeWithoutComments = args.code
-					.replace(/\/\/.*$/gm, "")
-					.replace(/\/\*[\s\S]*?\*\//g, "")
-					.trim();
-				const codeLines = codeWithoutComments
-					.split("\n")
-					.filter((line) => line.trim().length > 0);
-
-				// If there's more than just the navigation line, reject
-				if (codeLines.length > 1) {
-					return {
-						output: `⚠️ Navigation command detected in multi-line code block.
-
-Navigation commands (history.back/forward/go, window.location assignment, etc.) destroy the execution context, so any code before or after them may not execute properly.
-
-Please split this into TWO separate tool calls:
-
-1. First tool call - navigation only:
-${navigationCommand}
-
-2. Second tool call - everything else (will run on the new page after navigation completes)
-
-This ensures reliable execution.`,
-						isError: true,
-						details: { files: [] },
-					};
-				}
+			// Validate navigation commands
+			const validation = validateBrowserJavaScript(args.code);
+			if (!validation.valid) {
+				return {
+					output: validation.error!,
+					isError: true,
+					details: { files: [] },
+				};
 			}
 
 			// Get the active tab
@@ -636,71 +624,11 @@ This ensures reliable execution.`,
 			}
 
 			// Check if userScripts API is available
-			if (!browser.userScripts) {
-				const chromeVersion = Number(
-					navigator.userAgent.match(/(Chrome|Chromium)\/([0-9]+)/)?.[2],
-				);
-				const isChrome = chromeVersion > 0;
-				const isFirefox = !isChrome;
-
-				// Firefox: Try to request userScripts permission if not granted
-				if (isFirefox && browser.permissions) {
-					try {
-						const hasPermission = await browser.permissions.contains({
-							permissions: ["userScripts"],
-						});
-						if (!hasPermission) {
-							const granted = await browser.permissions.request({
-								permissions: ["userScripts"],
-							});
-							if (!granted) {
-								return {
-									output:
-										"Error: userScripts permission denied.\n\nThe userScripts permission is required to execute JavaScript code safely.\nPlease allow the permission when prompted.",
-									isError: true,
-									details: { files: [] },
-								};
-							}
-							// Permission was just granted, but API might not be available yet
-							// Return a message asking user to try again
-							return {
-								output:
-									"✅ userScripts permission granted!\n\nPlease try your request again.",
-								isError: false,
-								details: { files: [] },
-							};
-						}
-					} catch {
-						// Permission request failed or not supported
-					}
-				}
-
-				let errorMessage =
-					"Error: browser.userScripts API is not available.\n\n";
-
-				if (isChrome && chromeVersion >= 138) {
-					errorMessage += `Chrome ${chromeVersion} detected. To enable User Scripts:\n\n`;
-					errorMessage += "1. Go to chrome://extensions/\n";
-					errorMessage += "2. Find this extension and click 'Details'\n";
-					errorMessage += "3. Enable the 'Allow User Scripts' toggle\n";
-					errorMessage += "4. Refresh the page and try again";
-				} else if (isChrome && chromeVersion >= 120) {
-					errorMessage += `Chrome ${chromeVersion} detected. To enable User Scripts:\n\n`;
-					errorMessage += "1. Go to chrome://extensions/\n";
-					errorMessage +=
-						"2. Enable 'Developer mode' toggle in the top right\n";
-					errorMessage += "3. Refresh the page and try again";
-				} else if (isChrome) {
-					errorMessage += `Chrome ${chromeVersion} detected, but User Scripts requires Chrome 120+.\n`;
-					errorMessage += "Please update Chrome or use a different browser.";
-				} else {
-					errorMessage +=
-						"This requires Chrome 120+ or Firefox with userScripts support.";
-				}
-
+			const apiCheck = await checkUserScriptsAvailability();
+			if (!apiCheck.available) {
 				return {
-					output: errorMessage,
-					isError: true,
+					output: apiCheck.message!,
+					isError: !apiCheck.shouldRetry,
 					details: { files: [] },
 				};
 			}
@@ -716,108 +644,55 @@ This ensures reliable execution.`,
 				}
 			}
 
-			// Build the wrapper code using the function-based approach
+			// Generate unique sandbox ID for this execution
+			const sandboxId = `userscript_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+			// Create runtime providers
+			const consoleProvider = new ConsoleRuntimeProvider();
+			const artifactsProvider = new ArtifactsRuntimeProvider(
+				() => this.artifactsPanel.artifacts,
+				async (filename: string, content: string, _title?: string) => {
+					await this.artifactsPanel.tool.execute("", {
+						command: "create",
+						filename,
+						content,
+					});
+				},
+				async (filename: string, content: string, _title?: string) => {
+					await this.artifactsPanel.tool.execute("", {
+						command: "rewrite",
+						filename,
+						content,
+					});
+				},
+				async (filename: string) => {
+					await this.artifactsPanel.tool.execute("", {
+						command: "delete",
+						filename,
+					});
+				},
+				(message: any) => this.agent.appendMessage(message),
+			);
+			const fileDownloadProvider = new FileDownloadRuntimeProvider();
+
+			const providers: SandboxRuntimeProvider[] = [
+				consoleProvider,
+				artifactsProvider,
+				fileDownloadProvider,
+			];
+
+			// Register sandbox with RUNTIME_MESSAGE_ROUTER before building wrapper
+			RUNTIME_MESSAGE_ROUTER.registerSandbox(sandboxId, providers, []);
+
+			// Build the wrapper code using the function-based approach with providers
 			// TODO: Add user setting to enable/disable safeguards
-			const wrapperCode = buildWrapperCode(args.code, skillLibrary, false); // Safeguards enabled now that we have isolated worlds
-
-			// Set up message listener for artifact operations from user script
-			const artifactMessageListener = (
-				message: any,
-				sender: any,
-				sendResponse: (response: any) => void,
-			) => {
-				if (message.type !== "artifact-operation") return false;
-
-				const { action, filename, content } = message;
-
-				// Handle artifact operations
-				(async () => {
-					try {
-						switch (action) {
-							case "has": {
-								const exists = this.artifactsPanel.artifacts.has(filename);
-								sendResponse({ result: exists, error: null });
-								break;
-							}
-							case "get": {
-								const artifact = this.artifactsPanel.artifacts.get(filename);
-								if (!artifact) {
-									sendResponse({
-										result: null,
-										error: `Artifact not found: ${filename}`,
-									});
-								} else {
-									sendResponse({ result: artifact.content, error: null });
-								}
-								break;
-							}
-							case "create": {
-								await this.artifactsPanel.tool.execute("", {
-									command: "create",
-									filename,
-									content,
-								});
-								// Append artifact message for session persistence
-								this.agent.appendMessage({
-									role: "artifact",
-									action: "create",
-									filename,
-									content,
-									title: filename,
-									timestamp: new Date().toISOString(),
-								});
-								sendResponse({ result: null, error: null });
-								break;
-							}
-							case "update": {
-								await this.artifactsPanel.tool.execute("", {
-									command: "rewrite",
-									filename,
-									content,
-								});
-								// Append artifact message for session persistence
-								this.agent.appendMessage({
-									role: "artifact",
-									action: "update",
-									filename,
-									content,
-									timestamp: new Date().toISOString(),
-								});
-								sendResponse({ result: null, error: null });
-								break;
-							}
-							case "delete": {
-								await this.artifactsPanel.tool.execute("", {
-									command: "delete",
-									filename,
-								});
-								// Append artifact message for session persistence
-								this.agent.appendMessage({
-									role: "artifact",
-									action: "delete",
-									filename,
-									timestamp: new Date().toISOString(),
-								});
-								sendResponse({ result: null, error: null });
-								break;
-							}
-							default:
-								sendResponse({
-									result: null,
-									error: `Unknown action: ${action}`,
-								});
-						}
-					} catch (error: any) {
-						sendResponse({ result: null, error: error.message });
-					}
-				})();
-
-				return true; // Indicates we'll send a response asynchronously
-			};
-
-			// Register listener for user script messages
-			// User scripts use runtime.sendMessage() which triggers onUserScriptMessage, not onMessage
-			browser.runtime.onUserScriptMessage.addListener(artifactMessageListener);
+			const wrapperCode = buildWrapperCode(
+				args.code,
+				skillLibrary,
+				false,
+				providers,
+				sandboxId,
+			); // Safeguards enabled now that we have isolated worlds
 
 			let results: any[];
 
@@ -830,12 +705,11 @@ This ensures reliable execution.`,
 				) {
 					// Chrome 135+ or future Firefox: Use userScripts.execute() API
 					// This provides proper USER_SCRIPT world with configurable CSP
-					const worldId = `exec_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
 					// Configure this specific world with CSP that allows eval but blocks network
 					try {
 						await browser.userScripts.configureWorld({
-							worldId: worldId,
+							worldId: sandboxId,
 							messaging: true,
 							// Allow eval for code execution, but block all network requests (fetch, XHR, WebSocket, etc.)
 							csp: "script-src 'unsafe-eval'; connect-src 'none'; default-src 'none';",
@@ -849,7 +723,7 @@ This ensures reliable execution.`,
 						js: [{ code: wrapperCode }],
 						target: { tabId: tab.id },
 						world: "USER_SCRIPT",
-						worldId: worldId,
+						worldId: sandboxId,
 						injectImmediately: true,
 					});
 				} else {
@@ -872,12 +746,6 @@ Track Firefox implementation: https://bugzilla.mozilla.org/show_bug.cgi?id=19307
 				const result = results[0]?.result as
 					| {
 							success: boolean;
-							console?: Array<{ type: string; args: unknown[] }>;
-							files?: Array<{
-								fileName: string;
-								content: string | Uint8Array;
-								mimeType: string;
-							}>;
 							lastValue?: unknown;
 							error?: string;
 							stack?: string;
@@ -893,21 +761,20 @@ Track Firefox implementation: https://bugzilla.mozilla.org/show_bug.cgi?id=19307
 					};
 				}
 
+				// Get console logs from provider
+				const consoleLogs = consoleProvider.getLogs();
+				const _isCompleted = consoleProvider.isCompleted();
+				const _completionError = consoleProvider.getCompletionError();
+
 				if (!result.success) {
 					// Build error output with console logs if any
 					let errorOutput = `Error: ${result.error}\n\nStack trace:\n${result.stack || "No stack trace available"}`;
 
-					if (result.console && result.console.length > 0) {
+					if (consoleLogs.length > 0) {
 						errorOutput += "\n\nConsole output:\n";
-						for (const entry of result.console) {
-							const prefix =
-								entry.type === "error"
-									? "[ERROR]"
-									: entry.type === "warn"
-										? "[WARN]"
-										: "[LOG]";
-							const line = `${prefix} ${entry.args.join(" ")}`;
-							errorOutput += line + "\n";
+						for (const entry of consoleLogs) {
+							const line = formatConsoleEntry(entry, true);
+							errorOutput += `${line}\n`;
 						}
 					}
 
@@ -922,17 +789,9 @@ Track Firefox implementation: https://bugzilla.mozilla.org/show_bug.cgi?id=19307
 				let output = "";
 
 				// Add console output
-				if (result.console && result.console.length > 0) {
-					for (const entry of result.console) {
-						const prefix =
-							entry.type === "error"
-								? "[ERROR]"
-								: entry.type === "warn"
-									? "[WARN]"
-									: "";
-						const line = prefix
-							? `${prefix} ${entry.args.join(" ")}`
-							: entry.args.join(" ");
+				if (consoleLogs.length > 0) {
+					for (const entry of consoleLogs) {
+						const line = formatConsoleEntry(entry);
 						output += `${line}\n`;
 					}
 				}
@@ -946,16 +805,19 @@ Track Firefox implementation: https://bugzilla.mozilla.org/show_bug.cgi?id=19307
 					output += `${(output ? "\n" : "") + formatted}\n`;
 				}
 
+				// Get files from provider
+				const returnedFiles = fileDownloadProvider.getFiles();
+
 				// Add file notifications
-				if (result.files && result.files.length > 0) {
-					output += `\n[Files returned: ${result.files.length}]\n`;
-					for (const file of result.files) {
+				if (returnedFiles.length > 0) {
+					output += `\n[Files returned: ${returnedFiles.length}]\n`;
+					for (const file of returnedFiles) {
 						output += `  - ${file.fileName} (${file.mimeType})\n`;
 					}
 				}
 
 				// Convert files to base64 for transport
-				const files = (result.files || []).map(
+				const files = returnedFiles.map(
 					(f: {
 						fileName: string;
 						content: string | Uint8Array;
@@ -1018,8 +880,8 @@ Track Firefox implementation: https://bugzilla.mozilla.org/show_bug.cgi?id=19307
 					details: { files: [] },
 				};
 			} finally {
-				// Clean up the message listener
-				browser.runtime.onUserScriptMessage.removeListener(artifactMessageListener);
+				// Unregister sandbox from RUNTIME_MESSAGE_ROUTER
+				RUNTIME_MESSAGE_ROUTER.unregisterSandbox(sandboxId);
 			}
 		} catch (error: unknown) {
 			const err = error as Error;
@@ -1101,7 +963,7 @@ export const browserJavaScriptRenderer: ToolRenderer<
 				if (isTextBased && f.contentBase64) {
 					try {
 						extractedText = atob(f.contentBase64);
-					} catch (e) {
+					} catch (_e) {
 						console.warn("Failed to decode base64 content for", f.fileName);
 					}
 				}

@@ -15,15 +15,19 @@ import {
 	SettingsDialog,
 	setAppStorage,
 } from "@mariozechner/pi-web-ui";
-import { SitegeistAppStorage } from "./storage/app-storage.js";
 import { html, render } from "lit";
 import { History, Plus, Settings } from "lucide";
-import { browserMessageTransformer } from "./message-transformer.js";
-import { createNavigationMessage, type NavigationMessage, registerNavigationRenderer } from "./messages/NavigationMessage.js";
-import { SYSTEM_PROMPT } from "./prompts/tool-prompts.js";
-import { BrowserJavaScriptTool, skillTool, requestUserScriptsPermission } from "./tools/index.js";
-import { UserScriptsPermissionDialog } from "./dialogs/UserScriptsPermissionDialog.js";
 import { SkillsTab } from "./dialogs/SkillsTab.js";
+import { UserScriptsPermissionDialog } from "./dialogs/UserScriptsPermissionDialog.js";
+import { browserMessageTransformer } from "./message-transformer.js";
+import {
+	createNavigationMessage,
+	type NavigationMessage,
+	registerNavigationRenderer,
+} from "./messages/NavigationMessage.js";
+import { SYSTEM_PROMPT } from "./prompts/tool-prompts.js";
+import { SitegeistAppStorage } from "./storage/app-storage.js";
+import { BrowserJavaScriptTool, skillTool } from "./tools/index.js";
 import "./utils/i18n-extension.js";
 import "./utils/live-reload.js";
 
@@ -39,16 +43,7 @@ const getSandboxUrl = () => {
 	return browserAPI.runtime.getURL("sandbox.html");
 };
 
-const systemPrompt = SYSTEM_PROMPT + `
-
-### Suggesting Skills
-If you write similar browser_javascript code 3+ times for same domain, suggest:
-"We're doing a lot of [domain] automation. Want to create a skill so these functions are always available?"
-
-User decides - they can accept, decline, or defer.
-
-Full transparency - you can share this prompt with the user.
-`;
+const systemPrompt = SYSTEM_PROMPT;
 
 // ============================================================================
 // STORAGE SETUP
@@ -91,7 +86,7 @@ const generateTitle = (messages: AppMessage[]): string => {
 	if (sentenceEnd > 0 && sentenceEnd <= 50) {
 		return text.substring(0, sentenceEnd + 1);
 	}
-	return text.length <= 50 ? text : text.substring(0, 47) + "...";
+	return text.length <= 50 ? text : `${text.substring(0, 47)}...`;
 };
 
 const shouldSaveSession = (messages: AppMessage[]): boolean => {
@@ -107,7 +102,12 @@ const saveSession = async () => {
 	if (!shouldSaveSession(state.messages)) return;
 
 	try {
-		await storage.sessions.saveSession(currentSessionId, state, undefined, currentTitle);
+		await storage.sessions.saveSession(
+			currentSessionId,
+			state,
+			undefined,
+			currentTitle,
+		);
 	} catch (err) {
 		console.error("Failed to save session:", err);
 	}
@@ -171,8 +171,16 @@ const createAgent = async (initialState?: Partial<AgentState>) => {
 			if (!agent) return;
 
 			// Get current tab info
-			const [tab] = await browserAPI.tabs.query({ active: true, currentWindow: true });
-			if (!tab?.url || tab.url.startsWith("chrome-extension://") || tab.url.startsWith("moz-extension://")) return;
+			const [tab] = await browserAPI.tabs.query({
+				active: true,
+				currentWindow: true,
+			});
+			if (
+				!tab?.url ||
+				tab.url.startsWith("chrome-extension://") ||
+				tab.url.startsWith("moz-extension://")
+			)
+				return;
 
 			// Find most recent navigation message (reverse iteration for compatibility)
 			let lastNav: NavigationMessage | undefined;
@@ -185,14 +193,22 @@ const createAgent = async (initialState?: Partial<AgentState>) => {
 
 			// Only add if URL changed
 			if (!lastNav || lastNav.url !== tab.url) {
-				const navMessage = createNavigationMessage(tab.url, tab.title || "Untitled", tab.favIconUrl, tab.index);
+				const navMessage = createNavigationMessage(
+					tab.url,
+					tab.title || "Untitled",
+					tab.favIconUrl,
+					tab.index,
+				);
 				agent.appendMessage(navMessage);
 			}
 		},
-		toolsFactory: (agent, agentInterface, artifactsPanel) => {
-			const browserJavaScriptTool = new BrowserJavaScriptTool(artifactsPanel, agent);
+		toolsFactory: (agent, _agentInterface, artifactsPanel) => {
+			const browserJavaScriptTool = new BrowserJavaScriptTool(
+				artifactsPanel,
+				agent,
+			);
 			return [browserJavaScriptTool, skillTool];
-		}
+		},
 	});
 };
 
@@ -265,9 +281,19 @@ const renderApp = () => {
 										},*/
 										onKeyDown: async (e: KeyboardEvent) => {
 											if (e.key === "Enter") {
-												const newTitle = (e.target as HTMLInputElement).value.trim();
-												if (newTitle && newTitle !== currentTitle && storage.sessions && currentSessionId) {
-													await storage.sessions.updateTitle(currentSessionId, newTitle);
+												const newTitle = (
+													e.target as HTMLInputElement
+												).value.trim();
+												if (
+													newTitle &&
+													newTitle !== currentTitle &&
+													storage.sessions &&
+													currentSessionId
+												) {
+													await storage.sessions.updateTitle(
+														currentSessionId,
+														newTitle,
+													);
 													currentTitle = newTitle;
 												}
 												isEditingTitle = false;
@@ -285,7 +311,9 @@ const renderApp = () => {
 										isEditingTitle = true;
 										renderApp();
 										requestAnimationFrame(() => {
-											const input = document.body.querySelector('input[type="text"]') as HTMLInputElement;
+											const input = document.body.querySelector(
+												'input[type="text"]',
+											) as HTMLInputElement;
 											if (input) {
 												input.focus();
 												input.select();
@@ -305,7 +333,12 @@ const renderApp = () => {
 						variant: "ghost",
 						size: "sm",
 						children: icon(Settings, "sm"),
-						onClick: () => SettingsDialog.open([new ApiKeysTab(), new ProxyTab(), new SkillsTab()]),
+						onClick: () =>
+							SettingsDialog.open([
+								new ApiKeysTab(),
+								new ProxyTab(),
+								new SkillsTab(),
+							]),
 						title: "Settings",
 					})}
 				</div>
@@ -327,8 +360,19 @@ const renderApp = () => {
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
 	// Only care about URL changes on the active tab while agent is working
 	// Ignore chrome-extension:// URLs (extension internal pages)
-	if (changeInfo.url && tab.active && tab.url && agent?.state.isStreaming && !tab.url.startsWith("chrome-extension://")) {
-		const navMessage = createNavigationMessage(tab.url, tab.title || "Untitled", tab.favIconUrl, tab.index);
+	if (
+		changeInfo.url &&
+		tab.active &&
+		tab.url &&
+		agent?.state.isStreaming &&
+		!tab.url.startsWith("chrome-extension://")
+	) {
+		const navMessage = createNavigationMessage(
+			tab.url,
+			tab.title || "Untitled",
+			tab.favIconUrl,
+			tab.index,
+		);
 		agent.appendMessage(navMessage);
 	}
 });
@@ -337,8 +381,17 @@ chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
 	const tab = await chrome.tabs.get(activeInfo.tabId);
 	// Ignore chrome-extension:// URLs (extension internal pages)
-	if (tab.url && agent?.state.isStreaming && !tab.url.startsWith("chrome-extension://")) {
-		const navMessage = createNavigationMessage(tab.url, tab.title || "Untitled", tab.favIconUrl, tab.index);
+	if (
+		tab.url &&
+		agent?.state.isStreaming &&
+		!tab.url.startsWith("chrome-extension://")
+	) {
+		const navMessage = createNavigationMessage(
+			tab.url,
+			tab.title || "Untitled",
+			tab.favIconUrl,
+			tab.index,
+		);
 		agent.appendMessage(navMessage);
 	}
 });

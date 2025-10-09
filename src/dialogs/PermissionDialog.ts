@@ -1,4 +1,11 @@
-import { Button, DialogBase, DialogContent, DialogHeader, html, i18n } from "@mariozechner/mini-lit";
+import {
+	Button,
+	DialogBase,
+	DialogContent,
+	DialogHeader,
+	html,
+	i18n,
+} from "@mariozechner/mini-lit";
 
 export abstract class PermissionDialog extends DialogBase {
 	protected requesting = false;
@@ -29,7 +36,9 @@ export abstract class PermissionDialog extends DialogBase {
 	 * The callback is invoked when user clicks "Grant" and runs in the context of the user gesture.
 	 * Returns true if permission granted, false otherwise.
 	 */
-	protected async requestPermission(callback: () => Promise<{ granted: boolean; message?: string }>): Promise<boolean> {
+	protected async requestPermission(
+		callback: () => Promise<{ granted: boolean; message?: string }>,
+	): Promise<boolean> {
 		this.grantCallback = callback;
 		this.open();
 
@@ -39,7 +48,7 @@ export abstract class PermissionDialog extends DialogBase {
 				() => {
 					resolve(false);
 				},
-				{ once: true }
+				{ once: true },
 			);
 
 			// Store resolve for success case
@@ -120,13 +129,15 @@ export abstract class PermissionDialog extends DialogBase {
 							</ul>
 						</div>
 
-						${this.errorMessage
-							? html`
+						${
+							this.errorMessage
+								? html`
 									<div class="p-3 bg-destructive/10 border border-destructive/20 rounded text-sm text-destructive">
 										${this.errorMessage}
 									</div>
 							  `
-							: ""}
+								: ""
+						}
 					</div>
 
 					<div class="mt-6 flex gap-3 justify-end">
@@ -140,7 +151,9 @@ export abstract class PermissionDialog extends DialogBase {
 							variant: "default",
 							onClick: () => this.handleGrant(),
 							disabled: this.requesting,
-							children: this.requesting ? i18n("Requesting...") : i18n("Grant Permission"),
+							children: this.requesting
+								? i18n("Requesting...")
+								: i18n("Grant Permission"),
 						})}
 					</div>
 				`,

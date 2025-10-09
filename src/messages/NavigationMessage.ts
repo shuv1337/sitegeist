@@ -79,13 +79,14 @@ class NavigationMessageElement extends LitElement {
 					/>
 					<span class="truncate font-medium">${this.title}</span>
 				</button>
-				${this.skills.length > 0
-					? html`
+				${
+					this.skills.length > 0
+						? html`
 						<div class="flex flex-wrap gap-2">
 							${this.skills.map((skill) => SkillPill(skill, true))}
 						</div>
 					`
-					: ""
+						: ""
 				}
 			</div>
 		`;

@@ -34,7 +34,9 @@ export class PromptsStore extends Store {
 
 	async list(): Promise<UserPrompt[]> {
 		const keys = await this.getBackend().keys("user-prompts");
-		const prompts = await Promise.all(keys.map((key) => this.getBackend().get<UserPrompt>("user-prompts", key)));
+		const prompts = await Promise.all(
+			keys.map((key) => this.getBackend().get<UserPrompt>("user-prompts", key)),
+		);
 		return prompts.filter((p): p is UserPrompt => p !== null);
 	}
 }

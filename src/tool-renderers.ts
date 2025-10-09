@@ -1,6 +1,14 @@
-import { Button } from "@mariozechner/mini-lit";
-import type { ToolCall, ToolResultMessage as ToolResultMessageType } from "@mariozechner/pi-ai";
-import { ArtifactsToolRenderer, BashRenderer, CalculateRenderer, GetCurrentTimeRenderer, ToolMessage, getToolRenderer, javascriptReplTool, registerToolRenderer } from "@mariozechner/pi-web-ui";
+import type {
+	ToolCall,
+	ToolResultMessage as ToolResultMessageType,
+} from "@mariozechner/pi-ai";
+import {
+	ArtifactsToolRenderer,
+	BashRenderer,
+	CalculateRenderer,
+	GetCurrentTimeRenderer,
+	registerToolRenderer,
+} from "@mariozechner/pi-web-ui";
 import { html, LitElement } from "lit";
 import { customElement, state } from "lit/decorators.js";
 
@@ -58,10 +66,12 @@ class ToolRendererViewer extends LitElement {
 						data: {
 							name: "youtube-essentials",
 							domainPatterns: ["youtube.com", "youtu.be"],
-							shortDescription: "YouTube video player control and transcript extraction",
+							shortDescription:
+								"YouTube video player control and transcript extraction",
 							description: "Control video playback and extract transcripts",
 							examples: "yt.pause()\\nyt.getTranscript()",
-							library: "window.yt = { pause: () => {}, getTranscript: () => {} }",
+							library:
+								"window.yt = { pause: () => {}, getTranscript: () => {} }",
 						},
 					},
 				},
@@ -73,10 +83,12 @@ class ToolRendererViewer extends LitElement {
 						data: {
 							name: "youtube-essentials",
 							domainPatterns: ["youtube.com", "youtu.be"],
-							shortDescription: "YouTube video player control and transcript extraction",
+							shortDescription:
+								"YouTube video player control and transcript extraction",
 							description: "Control video playback and extract transcripts",
 							examples: "yt.pause()\\nyt.getTranscript()",
-							library: "window.yt = { pause: () => {}, getTranscript: () => {} }",
+							library:
+								"window.yt = { pause: () => {}, getTranscript: () => {} }",
 						},
 					},
 					result: {
@@ -88,10 +100,13 @@ class ToolRendererViewer extends LitElement {
 						details: {
 							name: "youtube-essentials",
 							domainPatterns: ["youtube.com", "youtu.be"],
-							shortDescription: "YouTube video player control and transcript extraction",
-							description: "Control video playback and extract transcripts. Use `yt.pause()` to pause the current video, and `yt.getTranscript()` to extract the full transcript text.",
+							shortDescription:
+								"YouTube video player control and transcript extraction",
+							description:
+								"Control video playback and extract transcripts. Use `yt.pause()` to pause the current video, and `yt.getTranscript()` to extract the full transcript text.",
 							examples: "yt.pause()\\nyt.getTranscript()",
-							library: "window.yt = { pause: () => {}, getTranscript: () => {} }",
+							library:
+								"window.yt = { pause: () => {}, getTranscript: () => {} }",
 							createdAt: "2025-10-07T12:00:00Z",
 							lastUpdated: "2025-10-07T12:00:00Z",
 						},
@@ -143,7 +158,8 @@ class ToolRendererViewer extends LitElement {
 						name: "youtube-essentials",
 						data: {
 							description: "Updated description for YouTube controls",
-							library: "window.yt = { pause: () => {}, play: () => {}, getTranscript: () => {} }",
+							library:
+								"window.yt = { pause: () => {}, play: () => {}, getTranscript: () => {} }",
 						},
 					},
 				},
@@ -155,7 +171,8 @@ class ToolRendererViewer extends LitElement {
 						name: "youtube-essentials",
 						data: {
 							description: "Updated description for YouTube controls",
-							library: "window.yt = { pause: () => {}, play: () => {}, getTranscript: () => {} }",
+							library:
+								"window.yt = { pause: () => {}, play: () => {}, getTranscript: () => {} }",
 						},
 					},
 					result: {
@@ -167,10 +184,12 @@ class ToolRendererViewer extends LitElement {
 						details: {
 							name: "youtube-essentials",
 							domainPatterns: ["youtube.com", "youtu.be"],
-							shortDescription: "YouTube video player control and transcript extraction",
+							shortDescription:
+								"YouTube video player control and transcript extraction",
 							description: "Updated description for YouTube controls",
 							examples: "yt.pause()\\nyt.getTranscript()",
-							library: "window.yt = { pause: () => {}, play: () => {}, getTranscript: () => {} }",
+							library:
+								"window.yt = { pause: () => {}, play: () => {}, getTranscript: () => {} }",
 							createdAt: "2025-10-07T12:00:00Z",
 							lastUpdated: "2025-10-07T13:00:00Z",
 						},
@@ -210,15 +229,19 @@ class ToolRendererViewer extends LitElement {
 						role: "toolResult",
 						toolCallId: "test-get-youtube-essentials",
 						toolName: "skill",
-						output: "youtube-essentials (youtube.com, youtu.be)\\nControl video playback and extract transcripts\\n\\nExamples:\\nyt.pause()\\nyt.getTranscript()",
+						output:
+							"youtube-essentials (youtube.com, youtu.be)\\nControl video playback and extract transcripts\\n\\nExamples:\\nyt.pause()\\nyt.getTranscript()",
 						isError: false,
 						details: {
 							name: "youtube-essentials",
 							domainPatterns: ["youtube.com", "youtu.be"],
-							shortDescription: "YouTube video player control and transcript extraction",
-							description: "Control video playback and extract transcripts. Use `yt.pause()` to pause the current video, and `yt.getTranscript()` to extract the full transcript text.",
+							shortDescription:
+								"YouTube video player control and transcript extraction",
+							description:
+								"Control video playback and extract transcripts. Use `yt.pause()` to pause the current video, and `yt.getTranscript()` to extract the full transcript text.",
 							examples: "yt.pause()\\nyt.getTranscript()",
-							library: "window.yt = { pause: () => {}, getTranscript: () => {} }",
+							library:
+								"window.yt = { pause: () => {}, getTranscript: () => {} }",
 							createdAt: "2025-10-07T12:00:00Z",
 							lastUpdated: "2025-10-07T12:00:00Z",
 						},
@@ -256,11 +279,15 @@ class ToolRendererViewer extends LitElement {
 						role: "toolResult",
 						toolCallId: "test-list-skills",
 						toolName: "skill",
-						output: "youtube-essentials: YouTube controls\\ngithub-helper: GitHub automation",
+						output:
+							"youtube-essentials: YouTube controls\\ngithub-helper: GitHub automation",
 						isError: false,
 						details: {
 							skills: [
-								{ domainPatterns: ["youtube.com", "youtu.be"], name: "youtube-essentials" },
+								{
+									domainPatterns: ["youtube.com", "youtu.be"],
+									name: "youtube-essentials",
+								},
 								{ domainPatterns: ["github.com"], name: "github-helper" },
 							],
 						},
@@ -364,7 +391,7 @@ class ToolRendererViewer extends LitElement {
 					name: "execute-streaming",
 					label: "Execute (Streaming)",
 					isStreaming: true,
-					params: {}
+					params: {},
 				},
 				{
 					name: "execute-streaming",
@@ -393,7 +420,7 @@ class ToolRendererViewer extends LitElement {
 					name: "execute-with-files",
 					label: "Execute (With Files)",
 					params: {
-						code: "await returnFile('data.txt', 'Sample data', 'text/plain');",
+						code: "await returnDownloadableFile('data.txt', 'Sample data', 'text/plain');",
 					},
 					result: {
 						role: "toolResult",
@@ -434,15 +461,13 @@ class ToolRendererViewer extends LitElement {
 					name: "running",
 					label: "Running",
 					isStreaming: false,
-					params: {
-					},
+					params: {},
 				},
 				{
 					name: "running",
 					label: "Running",
 					isStreaming: true,
-					params: {
-					},
+					params: {},
 				},
 				{
 					name: "running",
@@ -636,7 +661,8 @@ class ToolRendererViewer extends LitElement {
 					params: {
 						command: "create",
 						filename: "index.html",
-						content: '<!DOCTYPE html>\\n<html>\\n<head>\\n  <title>Hello World</title>\\n</head>\\n<body>\\n  <h1>Hello, World!</h1>\\n</body>\\n</html>',
+						content:
+							"<!DOCTYPE html>\\n<html>\\n<head>\\n  <title>Hello World</title>\\n</head>\\n<body>\\n  <h1>Hello, World!</h1>\\n</body>\\n</html>",
 					},
 				},
 				{
@@ -645,7 +671,8 @@ class ToolRendererViewer extends LitElement {
 					params: {
 						command: "create",
 						filename: "index.html",
-						content: '<!DOCTYPE html>\\n<html>\\n<head>\\n  <title>Hello World</title>\\n</head>\\n<body>\\n  <h1>Hello, World!</h1>\\n</body>\\n</html>',
+						content:
+							"<!DOCTYPE html>\\n<html>\\n<head>\\n  <title>Hello World</title>\\n</head>\\n<body>\\n  <h1>Hello, World!</h1>\\n</body>\\n</html>",
 					},
 					result: {
 						role: "toolResult",
@@ -662,7 +689,7 @@ class ToolRendererViewer extends LitElement {
 					params: {
 						command: "create",
 						filename: "index.html",
-						content: '<!DOCTYPE html>\\n<html>',
+						content: "<!DOCTYPE html>\\n<html>",
 					},
 					result: {
 						role: "toolResult",
@@ -749,7 +776,8 @@ class ToolRendererViewer extends LitElement {
 					params: {
 						command: "rewrite",
 						filename: "script.js",
-						content: "// Complete rewrite\\nconsole.log('New implementation');\\n\\nfunction main() {\\n  console.log('Hello!');\\n}\\n\\nmain();",
+						content:
+							"// Complete rewrite\\nconsole.log('New implementation');\\n\\nfunction main() {\\n  console.log('Hello!');\\n}\\n\\nmain();",
 					},
 				},
 				{
@@ -758,7 +786,8 @@ class ToolRendererViewer extends LitElement {
 					params: {
 						command: "rewrite",
 						filename: "script.js",
-						content: "// Complete rewrite\\nconsole.log('New implementation');\\n\\nfunction main() {\\n  console.log('Hello!');\\n}\\n\\nmain();",
+						content:
+							"// Complete rewrite\\nconsole.log('New implementation');\\n\\nfunction main() {\\n  console.log('Hello!');\\n}\\n\\nmain();",
 					},
 					result: {
 						role: "toolResult",
@@ -790,7 +819,8 @@ class ToolRendererViewer extends LitElement {
 						role: "toolResult",
 						toolCallId: "test-get-artifact",
 						toolName: "artifacts",
-						output: '<!DOCTYPE html>\\n<html>\\n<head>\\n  <title>Hello World</title>\\n</head>\\n<body>\\n  <h1>Hello, Universe!</h1>\\n</body>\\n</html>',
+						output:
+							"<!DOCTYPE html>\\n<html>\\n<head>\\n  <title>Hello World</title>\\n</head>\\n<body>\\n  <h1>Hello, Universe!</h1>\\n</body>\\n</html>",
 						isError: false,
 						details: undefined,
 					},
@@ -874,7 +904,8 @@ class ToolRendererViewer extends LitElement {
 						role: "toolResult",
 						toolCallId: "test-logs-artifact",
 						toolName: "artifacts",
-						output: "[2025-10-08 10:30:15] INFO: Artifact loaded\\n[2025-10-08 10:30:16] INFO: DOM ready\\n[2025-10-08 10:30:17] LOG: Hello, Universe!",
+						output:
+							"[2025-10-08 10:30:15] INFO: Artifact loaded\\n[2025-10-08 10:30:16] INFO: DOM ready\\n[2025-10-08 10:30:17] LOG: Hello, Universe!",
 						isError: false,
 						details: undefined,
 					},
@@ -961,15 +992,18 @@ class ToolRendererViewer extends LitElement {
 										${tools.map(
 											(tool) => html`
 												<button
-													class="w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${this
-														.selectedTool === tool
-														? "bg-secondary text-foreground font-medium"
-														: "text-muted-foreground hover:bg-secondary/50"}"
-													@click=${() => {this.selectedTool = tool}}
+													class="w-full text-left px-3 py-2 text-sm rounded-md transition-colors ${
+														this.selectedTool === tool
+															? "bg-secondary text-foreground font-medium"
+															: "text-muted-foreground hover:bg-secondary/50"
+													}"
+													@click=${() => {
+														this.selectedTool = tool;
+													}}
 												>
 													${tool}
 												</button>
-											`
+											`,
 										)}
 									</div>
 								</div>
@@ -995,7 +1029,7 @@ class ToolRendererViewer extends LitElement {
 										${this.selectedTool} Examples
 									</h2>
 									${currentCases.map((testCase) =>
-										this.renderToolExample(this.selectedTool, testCase)
+										this.renderToolExample(this.selectedTool, testCase),
 									)}
 								</div>
 							</div>

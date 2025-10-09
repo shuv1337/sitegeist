@@ -75,7 +75,9 @@ function reorderMessages(messages: Message[]): Message[] {
 
 // Custom message transformer for browser extension
 // Handles navigation messages and app-specific message types
-export async function browserMessageTransformer(messages: AppMessage[]): Promise<Message[]> {
+export async function browserMessageTransformer(
+	messages: AppMessage[],
+): Promise<Message[]> {
 	const skillsRepo = getSitegeistStorage().skills;
 	const transformed = [];
 
@@ -86,19 +88,27 @@ export async function browserMessageTransformer(messages: AppMessage[]): Promise
 		}
 
 		// Filter non-LLM messages
-		if (m.role !== "user" && m.role !== "assistant" && m.role !== "toolResult" && m.role !== "navigation") {
+		if (
+			m.role !== "user" &&
+			m.role !== "assistant" &&
+			m.role !== "toolResult" &&
+			m.role !== "navigation"
+		) {
 			continue;
 		}
 
 		if (m.role === "navigation") {
 			const nav = m as NavigationMessage;
-			const tabInfo = nav.tabIndex !== undefined ? ` (tab ${nav.tabIndex})` : "";
+			const tabInfo =
+				nav.tabIndex !== undefined ? ` (tab ${nav.tabIndex})` : "";
 
 			// Load skills matching this navigation URL
 			const skills = await skillsRepo.getSkillsForUrl(nav.url);
 			let skillsInfo = "";
 			if (skills.length > 0) {
-				const skillNames = skills.map(s => `${s.name}: ${s.shortDescription}`).join("\n");
+				const skillNames = skills
+					.map((s) => `${s.name}: ${s.shortDescription}`)
+					.join("\n");
 				skillsInfo = `\n\nSkills available (MUST USE - do not rewrite):\n${skillNames}\n\nREQUIRED WORKFLOW:\n1. Get skill: skill({ action: "get", name: "skill-name" })\n2. Use skill functions via browser_javascript\n3. Custom code ONLY if skill is insufficient\n\nSkills exist to save tokens - use them!`;
 			}
 

@@ -1,9 +1,9 @@
-import { html, Input, Button } from "@mariozechner/mini-lit";
+import { Button, html, Input } from "@mariozechner/mini-lit";
 import { SettingsTab } from "@mariozechner/pi-web-ui";
+import { Toast } from "../components/Toast.js";
 import { getSitegeistStorage } from "../storage/app-storage.js";
 import type { Skill } from "../storage/stores/skills-store.js";
 import { getFaviconUrl } from "../utils/favicon.js";
-import { Toast } from "../components/Toast.js";
 
 export class SkillsTab extends SettingsTab {
 	label = "Skills";
@@ -25,19 +25,23 @@ export class SkillsTab extends SettingsTab {
 
 	async loadSkills() {
 		const storage = getSitegeistStorage();
-		this.skills = await storage.skills.list().then(list =>
-			Promise.all(list.map(s => storage.skills.get(s.name))).then(skills => skills.filter(Boolean) as Skill[])
-		);
+		this.skills = await storage.skills
+			.list()
+			.then((list) =>
+				Promise.all(list.map((s) => storage.skills.get(s.name))).then(
+					(skills) => skills.filter(Boolean) as Skill[],
+				),
+			);
 		this.filterSkills();
 	}
 
 	filterSkills() {
 		const query = this.searchQuery.toLowerCase();
 		this.filteredSkills = this.skills.filter(
-			s =>
+			(s) =>
 				s.name.toLowerCase().includes(query) ||
 				s.domainPatterns.some((p: string) => p.toLowerCase().includes(query)) ||
-				s.shortDescription.toLowerCase().includes(query)
+				s.shortDescription.toLowerCase().includes(query),
 		);
 		this.requestUpdate();
 	}
@@ -85,9 +89,13 @@ export class SkillsTab extends SettingsTab {
 
 	async exportSkills() {
 		const storage = getSitegeistStorage();
-		const allSkills = await storage.skills.list().then(list =>
-			Promise.all(list.map(s => storage.skills.get(s.name))).then(skills => skills.filter(Boolean) as Skill[])
-		);
+		const allSkills = await storage.skills
+			.list()
+			.then((list) =>
+				Promise.all(list.map((s) => storage.skills.get(s.name))).then(
+					(skills) => skills.filter(Boolean) as Skill[],
+				),
+			);
 
 		const json = JSON.stringify(allSkills, null, 2);
 		const blob = new Blob([json], { type: "application/json" });
@@ -149,8 +157,10 @@ export class SkillsTab extends SettingsTab {
 		const storage = getSitegeistStorage();
 
 		// Filter out skills that are in conflicts and not selected
-		const conflictNames = new Set(this.importConflicts.filter(c => !c.selected).map(c => c.skill.name));
-		const toImport = skills.filter(s => !conflictNames.has(s.name));
+		const conflictNames = new Set(
+			this.importConflicts.filter((c) => !c.selected).map((c) => c.skill.name),
+		);
+		const toImport = skills.filter((s) => !conflictNames.has(s.name));
 
 		let imported = 0;
 		for (const skill of toImport) {
@@ -164,7 +174,8 @@ export class SkillsTab extends SettingsTab {
 	}
 
 	toggleConflictSelection(index: number) {
-		this.importConflicts[index].selected = !this.importConflicts[index].selected;
+		this.importConflicts[index].selected =
+			!this.importConflicts[index].selected;
 		this.requestUpdate();
 	}
 
@@ -182,7 +193,7 @@ export class SkillsTab extends SettingsTab {
 					<div class="flex-1 space-y-2">
 						<h3 class="font-semibold text-foreground">${skill.name}</h3>
 						<div class="text-xs text-muted-foreground font-mono">
-							${skill.domainPatterns.join(', ')}
+							${skill.domainPatterns.join(", ")}
 						</div>
 						<p class="text-sm text-muted-foreground">${skill.shortDescription}</p>
 						<div class="flex gap-2 pt-2">
@@ -190,13 +201,13 @@ export class SkillsTab extends SettingsTab {
 								variant: "outline",
 								size: "sm",
 								onClick: () => this.editSkill(skill),
-								children: "Edit"
+								children: "Edit",
 							})}
 							${Button({
 								variant: "destructive",
 								size: "sm",
 								onClick: () => this.deleteSkill(skill),
-								children: "Delete"
+								children: "Delete",
 							})}
 						</div>
 					</div>
@@ -214,25 +225,32 @@ export class SkillsTab extends SettingsTab {
 					label: "Name (cannot be changed)",
 					type: "text",
 					value: skill.name,
-					disabled: true
+					disabled: true,
 				})}
 
 				${Input({
 					label: "Domain Patterns (comma-separated)",
 					type: "text",
-					value: skill.domainPatterns.join(', '),
+					value: skill.domainPatterns.join(", "),
 					onInput: (e) => {
 						const value = (e.target as HTMLInputElement).value;
-						const patterns = value.split(',').map(p => p.trim()).filter(p => p.length > 0);
+						const patterns = value
+							.split(",")
+							.map((p) => p.trim())
+							.filter((p) => p.length > 0);
 						this.updateEditField("domainPatterns", patterns);
-					}
+					},
 				})}
 
 				${Input({
 					label: "Short Description",
 					type: "text",
 					value: skill.shortDescription,
-					onInput: (e) => this.updateEditField("shortDescription", (e.target as HTMLInputElement).value)
+					onInput: (e) =>
+						this.updateEditField(
+							"shortDescription",
+							(e.target as HTMLInputElement).value,
+						),
 				})}
 
 				<div class="space-y-2">
@@ -266,12 +284,12 @@ export class SkillsTab extends SettingsTab {
 					${Button({
 						variant: "outline",
 						onClick: () => this.cancelEdit(),
-						children: "Cancel"
+						children: "Cancel",
 					})}
 					${Button({
 						variant: "default",
 						onClick: () => this.saveEdit(),
-						children: "Save"
+						children: "Save",
 					})}
 				</div>
 			</div>
@@ -287,7 +305,8 @@ export class SkillsTab extends SettingsTab {
 				</p>
 
 				<div class="space-y-2">
-					${this.importConflicts.map((conflict, index) => html`
+					${this.importConflicts.map(
+						(conflict, index) => html`
 						<label class="flex items-start gap-3 p-3 border border-border rounded cursor-pointer hover:bg-muted/50">
 							<input
 								type="checkbox"
@@ -301,19 +320,20 @@ export class SkillsTab extends SettingsTab {
 								<div class="text-sm text-muted-foreground mt-1">${conflict.skill.shortDescription}</div>
 							</div>
 						</label>
-					`)}
+					`,
+					)}
 				</div>
 
 				<div class="flex justify-end gap-2">
 					${Button({
 						variant: "outline",
 						onClick: () => this.cancelImport(),
-						children: "Cancel"
+						children: "Cancel",
 					})}
 					${Button({
 						variant: "default",
 						onClick: () => this.performImport(this.importedSkills),
-						children: "Import Selected"
+						children: "Import Selected",
 					})}
 				</div>
 			</div>
@@ -340,12 +360,12 @@ export class SkillsTab extends SettingsTab {
 					${Button({
 						variant: "outline",
 						onClick: () => this.exportSkills(),
-						children: "Export Skills"
+						children: "Export Skills",
 					})}
 					${Button({
 						variant: "outline",
 						onClick: () => this.importSkills(),
-						children: "Import Skills"
+						children: "Import Skills",
 					})}
 				</div>
 
@@ -353,20 +373,22 @@ export class SkillsTab extends SettingsTab {
 					type: "text",
 					placeholder: "Search skills by name, domain, or description...",
 					value: this.searchQuery,
-					onInput: (e) => this.onSearchInput(e)
+					onInput: (e) => this.onSearchInput(e),
 				})}
 
-				${this.filteredSkills.length === 0
-					? html`<div class="text-center text-muted-foreground py-8">
+				${
+					this.filteredSkills.length === 0
+						? html`<div class="text-center text-muted-foreground py-8">
 							${this.searchQuery ? "No skills match your search" : "No skills created yet"}
 						</div>`
-					: html`<div class="flex flex-col gap-3">
-							${this.filteredSkills.map(skill =>
+						: html`<div class="flex flex-col gap-3">
+							${this.filteredSkills.map((skill) =>
 								this.editingSkill && this.editingSkill.name === skill.name
 									? this.renderSkillEditor(this.editingSkill)
-									: this.renderSkillInfo(skill)
+									: this.renderSkillInfo(skill),
 							)}
-						</div>`}
+						</div>`
+				}
 			</div>
 		`;
 	}

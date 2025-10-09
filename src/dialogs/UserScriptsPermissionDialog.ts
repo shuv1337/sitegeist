@@ -17,13 +17,15 @@ export class UserScriptsPermissionDialog extends PermissionDialog {
 	protected header() {
 		return {
 			title: i18n("JavaScript Execution Permission Required"),
-			description: i18n("This extension needs permission to execute JavaScript code on web pages"),
+			description: i18n(
+				"This extension needs permission to execute JavaScript code on web pages",
+			),
 		};
 	}
 
 	protected why(): string {
 		return i18n(
-			"The browser_javascript tool allows the AI to read and interact with web pages on your behalf. This requires the userScripts permission to execute code safely and securely."
+			"The browser_javascript tool allows the AI to read and interact with web pages on your behalf. This requires the userScripts permission to execute code safely and securely.",
 		);
 	}
 

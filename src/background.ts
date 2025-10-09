@@ -1,8 +1,10 @@
 // Cross-browser API compatibility
 // @ts-expect-error - browser global exists in Firefox, chrome in Chrome
-const browserAPI: typeof chrome & typeof browser = (globalThis as any).browser || (globalThis as any).chrome;
+const browserAPI: typeof chrome & typeof browser =
+	(globalThis as any).browser || (globalThis as any).chrome;
 
-const isFirefox = !!(globalThis as any).browser && !!(browserAPI as any).sidebarAction;
+const isFirefox =
+	!!(globalThis as any).browser && !!(browserAPI as any).sidebarAction;
 
 if (isFirefox) {
 	// Firefox needs an `action` key in manifest.json

@@ -21,7 +21,11 @@ export class MemoriesStore extends Store {
 	}
 
 	async set(sessionId: string, key: string, value: unknown): Promise<void> {
-		await this.getBackend().set("memories", this.makeKey(sessionId, key), value);
+		await this.getBackend().set(
+			"memories",
+			this.makeKey(sessionId, key),
+			value,
+		);
 	}
 
 	async delete(sessionId: string, key: string): Promise<void> {
@@ -36,11 +40,15 @@ export class MemoriesStore extends Store {
 
 	async clear(sessionId: string): Promise<void> {
 		const keys = await this.keys(sessionId);
-		await this.getBackend().transaction(["memories"], "readwrite", async (tx) => {
-			for (const key of keys) {
-				await tx.delete("memories", this.makeKey(sessionId, key));
-			}
-		});
+		await this.getBackend().transaction(
+			["memories"],
+			"readwrite",
+			async (tx) => {
+				for (const key of keys) {
+					await tx.delete("memories", this.makeKey(sessionId, key));
+				}
+			},
+		);
 	}
 
 	async has(sessionId: string, key: string): Promise<boolean> {
