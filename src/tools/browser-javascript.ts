@@ -623,7 +623,6 @@ export class BrowserJavaScriptTool
 					// This is a non-error case where the user granted permission - return success
 					return {
 						output: apiCheck.message!,
-						isError: false,
 						details: { files: [] },
 					};
 				}
@@ -855,7 +854,6 @@ Track Firefox implementation: https://bugzilla.mozilla.org/show_bug.cgi?id=19307
 
 				return {
 					output: output.trim() || "Code executed successfully (no output)",
-					isError: false,
 					details: { files },
 				};
 			} catch (error: unknown) {
