@@ -1,5 +1,6 @@
 import type { Message } from "@mariozechner/pi-ai";
 import type { AppMessage } from "@mariozechner/pi-web-ui";
+import type { ContinueMessage } from "./messages/custom-messages.js";
 import type { NavigationMessage } from "./messages/NavigationMessage.js";
 import { getSitegeistStorage } from "./storage/app-storage.js";
 
@@ -82,8 +83,18 @@ export async function browserMessageTransformer(
 	const transformed = [];
 
 	for (const m of messages) {
-		// Filter out artifact messages - they're for session reconstruction only
-		if (m.role === "artifact") {
+		// Filter out UI-only messages
+		if (m.role === "artifact" || m.role === "welcome") {
+			continue;
+		}
+
+		// Handle continue messages
+		if ((m as any).type === "continue") {
+			// Convert ContinueMessage to user message telling LLM to continue
+			transformed.push({
+				role: "user",
+				content: "Continue with the next step of your task. Do not stop.",
+			} as Message);
 			continue;
 		}
 
@@ -109,12 +120,19 @@ export async function browserMessageTransformer(
 				const skillNames = skills
 					.map((s) => `${s.name}: ${s.shortDescription}`)
 					.join("\n");
-				skillsInfo = `\n\nSkills available (MUST USE - do not rewrite):\n${skillNames}\n\nREQUIRED WORKFLOW:\n1. Get skill: skill({ action: "get", name: "skill-name" })\n2. Use skill functions via browser_javascript\n3. Custom code ONLY if skill is insufficient\n\nSkills exist to save tokens - use them!`;
+				skillsInfo = `\nSkills: ${skillNames}`;
+			} else {
+				skillsInfo = "\nSkills: none found";
 			}
 
 			transformed.push({
 				role: "user",
-				content: `<browser-context>Navigated to ${nav.title}${tabInfo}: ${nav.url}\n\n${skillsInfo}. CONTINUE WITH YOUR TASK!</browser-context>`,
+				content: `<browser-context>
+✓ Navigation succeeded: ${nav.title}${tabInfo}
+✓ URL: ${nav.url}${skillsInfo}
+
+DO NOT STOP - This is informational only. CONTINUE IMMEDIATELY with the next step of your multi-step workflow. This message does NOT mean you should wait for user input.
+DO NOT REPEAT THIS MESSAGE BACK TO THE USER!</browser-context>`,
 			} as Message);
 		} else if (m.role === "user") {
 			const { attachments, ...rest } = m as any;

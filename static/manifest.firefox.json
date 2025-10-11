@@ -13,10 +13,19 @@
 		"default_panel": "sidepanel.html",
 		"default_icon": "icon-48.png"
 	},
+	"commands": {
+		"toggle-sidepanel": {
+			"suggested_key": {
+				"default": "Ctrl+Shift+P",
+				"mac": "Command+Shift+P"
+			},
+			"description": "Toggle sidebar"
+		}
+	},
 	"background": {
 		"scripts": ["background.js"]
 	},
-	"permissions": ["storage", "unlimitedStorage", "activeTab", "scripting"],
+	"permissions": ["storage", "unlimitedStorage", "activeTab", "scripting", "webNavigation"],
 	"optional_permissions": ["userScripts"],
 	"host_permissions": ["<all_urls>"],
 	"browser_specific_settings": {

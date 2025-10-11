@@ -34,6 +34,9 @@ declare module "@mariozechner/mini-lit" {
 		"Continue Anyway": string;
 		"Requesting...": string;
 		"Grant Permission": string;
+		"Navigating to": string;
+		"Click to open": string;
+		"Waiting...": string;
 	}
 }
 
@@ -77,6 +80,9 @@ const sitegeistTranslations = {
 		"Continue Anyway": "Continue Anyway",
 		"Requesting...": "Requesting...",
 		"Grant Permission": "Grant Permission",
+		"Navigating to": "Navigating to",
+		"Click to open": "Click to open",
+		"Waiting...": "Waiting...",
 	},
 	de: {
 		"Permission request failed": "Berechtigungsanfrage fehlgeschlagen",
@@ -117,6 +123,9 @@ const sitegeistTranslations = {
 		"Continue Anyway": "Trotzdem fortfahren",
 		"Requesting...": "Anfrage läuft...",
 		"Grant Permission": "Berechtigung erteilen",
+		"Navigating to": "Navigiere zu",
+		"Click to open": "Klicken zum Öffnen",
+		"Waiting...": "Warte...",
 	},
 };
 

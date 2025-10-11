@@ -1,8 +1,8 @@
 {
 	"manifest_version": 3,
 	"minimum_chrome_version": "138",
-	"name": "pi-ai",
-	"description": "Use @mariozechner/pi-ai to summarize and highlight the page you are reading.",
+	"name": "sitegeist",
+	"description": "Your AI companion for the web - Research, automate, create",
 	"version": "0.5.43",
 	"action": {
 		"default_title": "Click to open side panel"
@@ -19,12 +19,23 @@
 	"side_panel": {
 		"default_path": "sidepanel.html"
 	},
+	"commands": {
+		"toggle-sidepanel": {
+			"suggested_key": {
+				"default": "Ctrl+Shift+P",
+				"mac": "Command+Shift+P"
+			},
+			"description": "Toggle side panel"
+		}
+	},
 	"permissions": [
 		"storage",
 		"unlimitedStorage",
 		"activeTab",
 		"sidePanel",
-		"userScripts"
+		"userScripts",
+		"webNavigation",
+		"scripting"
 	],
 	"host_permissions": [
 		"https://*/*",

@@ -14,6 +14,7 @@ import {
 	renderHeader,
 	type SandboxRuntimeProvider,
 	type ToolRenderer,
+	type ToolRenderResult,
 } from "@mariozechner/pi-web-ui";
 import { type Static, Type } from "@sinclair/typebox";
 import { createRef, ref } from "lit/directives/ref.js";
@@ -340,57 +341,34 @@ async function checkUserScriptsAvailability(): Promise<{
 
 /**
  * Validates browser JavaScript code for navigation commands.
- * Navigation commands destroy the execution context, so they must be isolated.
+ * Navigation should use the navigate tool instead.
  */
 function validateBrowserJavaScript(code: string): {
 	valid: boolean;
 	error?: string;
 } {
-	// Check if code contains navigation that will destroy execution context
-	const navigationRegex =
-		/\b(window\.location\s*=|location\.href\s*=|history\.(back|forward|go)\s*\(|window\.open\s*\(|document\.location\s*=)/;
-	const navigationMatch = code.match(navigationRegex);
+	// Check if code contains navigation patterns
+	const patterns = [
+		/\bwindow\.location\s*=\s*["'`]/,
+		/\blocation\.href\s*=\s*["'`]/,
+		/\bdocument\.location\s*=\s*["'`]/,
+		/\bwindow\.location\.href\s*=\s*["'`]/,
+		/\blocation\.assign\s*\(/,
+		/\blocation\.replace\s*\(/,
+		/\bwindow\.location\.assign\s*\(/,
+		/\bwindow\.location\.replace\s*\(/,
+		/\bhistory\.back\s*\(/,
+		/\bhistory\.forward\s*\(/,
+		/\bhistory\.go\s*\(/,
+	];
 
-	if (!navigationMatch) {
-		return { valid: true };
-	}
-
-	// Extract just the navigation command if found
-	let navigationCommand: string | null = null;
-	const lines = code.split("\n");
-	for (const line of lines) {
-		if (navigationRegex.test(line)) {
-			navigationCommand = line.trim();
-			break;
+	for (const pattern of patterns) {
+		if (pattern.test(code)) {
+			return {
+				valid: false,
+				error: "Use navigate tool instead. Navigation in code breaks execution context.",
+			};
 		}
-	}
-
-	// If navigation is detected and there's other code around it, reject and ask for split
-	const codeWithoutComments = code
-		.replace(/\/\/.*$/gm, "")
-		.replace(/\/\*[\s\S]*?\*\//g, "")
-		.trim();
-	const codeLines = codeWithoutComments
-		.split("\n")
-		.filter((line) => line.trim().length > 0);
-
-	// If there's more than just the navigation line, reject
-	if (codeLines.length > 1) {
-		return {
-			valid: false,
-			error: `⚠️ Navigation command detected in multi-line code block.
-
-Navigation commands (history.back/forward/go, window.location assignment, etc.) destroy the execution context, so any code before or after them may not execute properly.
-
-Please split this into TWO separate tool calls:
-
-1. First tool call - navigation only:
-${navigationCommand}
-
-2. Second tool call - everything else (will run on the new page after navigation completes)
-
-This ensures reliable execution.`,
-		};
 	}
 
 	return { valid: true };
@@ -735,7 +713,7 @@ export const browserJavaScriptRenderer: ToolRenderer<
 		params: BrowserJavaScriptParams | undefined,
 		result: ToolResultMessage<BrowserJavaScriptResult> | undefined,
 		isStreaming?: boolean,
-	): TemplateResult {
+	): ToolRenderResult {
 		// Determine status
 		const state = result
 			? result.isError
@@ -785,7 +763,7 @@ export const browserJavaScriptRenderer: ToolRenderer<
 				};
 			});
 
-			return html`
+			return {content: html`
 				<div>
 					${renderCollapsibleHeader(state, Globe, params.title, codeContentRef, codeChevronRef, false)}
 					<div ${ref(codeContentRef)} class="max-h-0 overflow-hidden transition-all duration-300 space-y-3">
@@ -800,23 +778,23 @@ export const browserJavaScriptRenderer: ToolRenderer<
 							: ""
 					}
 				</div>
-			`;
+			`, isCustom: false };
 		}
 
 		// Just params (streaming or waiting for result)
 		if (params) {
-			return html`
+			return {content: html`
 				<div>
 					${renderCollapsibleHeader(state, Globe, params.title || (isStreaming ? i18n("Writing JavaScript code...") : i18n("Execute JavaScript")), codeContentRef, codeChevronRef, false)}
 					<div ${ref(codeContentRef)} class="max-h-0 overflow-hidden transition-all duration-300">
 						${params.code ? html`<code-block .code=${params.code} language="javascript"></code-block>` : ""}
 					</div>
 				</div>
-			`;
+			`, isCustom: false};
 		}
 
 		// No params or result yet
-		return renderHeader(state, Globe, i18n("Preparing JavaScript..."));
+		return {content: renderHeader(state, Globe, i18n("Preparing JavaScript...")), isCustom: false};
 	},
 };
 

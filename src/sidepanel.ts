@@ -25,9 +25,11 @@ import {
 	type NavigationMessage,
 	registerNavigationRenderer,
 } from "./messages/NavigationMessage.js";
+import { createWelcomeMessage, registerWelcomeRenderer } from "./messages/WelcomeMessage.js";
 import { SYSTEM_PROMPT } from "./prompts/tool-prompts.js";
 import { SitegeistAppStorage } from "./storage/app-storage.js";
 import { BrowserJavaScriptTool, skillTool } from "./tools/index.js";
+import { isToolNavigating, NavigateTool } from "./tools/navigate.js";
 import "./utils/i18n-extension.js";
 import "./utils/live-reload.js";
 
@@ -119,7 +121,7 @@ const updateUrl = (sessionId: string) => {
 	window.history.replaceState({}, "", url);
 };
 
-const createAgent = async (initialState?: Partial<AgentState>) => {
+const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true) => {
 	if (agentUnsubscribe) {
 		agentUnsubscribe();
 	}
@@ -138,29 +140,53 @@ const createAgent = async (initialState?: Partial<AgentState>) => {
 		messageTransformer: browserMessageTransformer,
 	});
 
-	agentUnsubscribe = agent.subscribe((event: any) => {
-		if (event.type === "state-update") {
-			const messages = event.state.messages;
+	if (shouldSave) {
+		agentUnsubscribe = agent.subscribe((event: any) => {
+			if (event.type === "state-update") {
+				const messages = event.state.messages;
 
-			// Generate title after first successful response
-			if (!currentTitle && shouldSaveSession(messages)) {
-				currentTitle = generateTitle(messages);
+				// Generate title after first successful response
+				if (!currentTitle && shouldSaveSession(messages)) {
+					currentTitle = generateTitle(messages);
+				}
+
+				// Create session ID on first successful save
+				if (!currentSessionId && shouldSaveSession(messages)) {
+					currentSessionId = crypto.randomUUID();
+					updateUrl(currentSessionId);
+				}
+
+				// Auto-save
+				if (currentSessionId) {
+					saveSession();
+				}
+
+				renderApp();
+			} else if (event.type === "completed") {
+				// Check if last assistant message has empty content - if so, auto-continue
+				const messages = agent.state.messages;
+				const lastMessage = messages[messages.length - 1];
+
+				// TODO this if cfucked, need to find a better way.
+				/*if (lastMessage?.role === "assistant" && Array.isArray(lastMessage.content) && lastMessage.content.length === 0) {
+					console.log("Empty assistant response detected - auto-continuing");
+
+					// Remove the empty assistant message
+					agent.state.messages.pop();
+
+					// Append a ContinueMessage (invisible to user, converted to "continue" prompt in transformer)
+					console.log("Injecting ContinueMessage to prompt LLM to continue");
+					agent.appendMessage({
+						type: "continue",
+						role: "user",
+					} as any);
+
+					// Trigger the agent to continue with empty prompt (will use ContinueMessage)
+					agent.prompt("");
+				}*/
 			}
-
-			// Create session ID on first successful save
-			if (!currentSessionId && shouldSaveSession(messages)) {
-				currentSessionId = crypto.randomUUID();
-				updateUrl(currentSessionId);
-			}
-
-			// Auto-save
-			if (currentSessionId) {
-				saveSession();
-			}
-
-			renderApp();
-		}
-	});
+		});
+	}
 
 	await chatPanel.setAgent(agent, {
 		sandboxUrlProvider: getSandboxUrl,
@@ -203,13 +229,39 @@ const createAgent = async (initialState?: Partial<AgentState>) => {
 			}
 		},
 		toolsFactory: (agent, _agentInterface, artifactsPanel) => {
+			const navigateTool = new NavigateTool(agent);
 			const browserJavaScriptTool = new BrowserJavaScriptTool(
 				artifactsPanel,
 				agent,
 			);
-			return [browserJavaScriptTool, skillTool];
+			return [navigateTool, browserJavaScriptTool, skillTool];
 		},
 	});
+
+	// Register welcome renderer after agentInterface is available
+	if (chatPanel.agentInterface) {
+		registerWelcomeRenderer(agent, chatPanel.agentInterface);
+
+		// Only disable auto-scroll for new sessions with welcome message
+		// Check if this is a fresh session (only has welcome message, no user messages)
+		const hasUserMessage = agent.state.messages.some((m) => m.role === "user");
+		if (!hasUserMessage) {
+			chatPanel.agentInterface.setAutoScroll(false);
+
+			// Re-enable auto-scroll on first user message
+			// biome-ignore lint: Need let for closure to avoid temporal dead zone
+			let unsubscribe: (() => void) | undefined;
+			unsubscribe = agent.subscribe((event) => {
+				if (event.type === "state-update") {
+					const hasUserMsg = event.state.messages.some((m) => m.role === "user");
+					if (hasUserMsg && unsubscribe) {
+						chatPanel.agentInterface?.setAutoScroll(true);
+						unsubscribe();
+					}
+				}
+			});
+		}
+	}
 };
 
 const loadSession = (sessionId: string) => {
@@ -324,7 +376,7 @@ const renderApp = () => {
 								>
 									${currentTitle}
 								</button>`
-							: html`<span class="text-sm font-semibold text-foreground">pi-ai</span>`
+							: html``
 					}
 				</div>
 				<div class="flex items-center gap-1 px-2">
@@ -360,12 +412,14 @@ const renderApp = () => {
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
 	// Only care about URL changes on the active tab while agent is working
 	// Ignore chrome-extension:// URLs (extension internal pages)
+	// Ignore tool-initiated navigations (handled by the navigate tool itself)
 	if (
 		changeInfo.url &&
 		tab.active &&
 		tab.url &&
 		agent?.state.isStreaming &&
-		!tab.url.startsWith("chrome-extension://")
+		!tab.url.startsWith("chrome-extension://") &&
+		!isToolNavigating()
 	) {
 		const navMessage = createNavigationMessage(
 			tab.url,
@@ -373,7 +427,8 @@ chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
 			tab.favIconUrl,
 			tab.index,
 		);
-		agent.appendMessage(navMessage);
+		agent.queueMessage(navMessage);
+		console.log("Queued navigation message for tab switch to", tab.url);
 	}
 });
 
@@ -381,10 +436,12 @@ chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
 chrome.tabs.onActivated.addListener(async (activeInfo) => {
 	const tab = await chrome.tabs.get(activeInfo.tabId);
 	// Ignore chrome-extension:// URLs (extension internal pages)
+	// Ignore tool-initiated navigations (handled by the navigate tool itself)
 	if (
 		tab.url &&
 		agent?.state.isStreaming &&
-		!tab.url.startsWith("chrome-extension://")
+		!tab.url.startsWith("chrome-extension://") &&
+		!isToolNavigating()
 	) {
 		const navMessage = createNavigationMessage(
 			tab.url,
@@ -392,7 +449,8 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 			tab.favIconUrl,
 			tab.index,
 		);
-		agent.appendMessage(navMessage);
+		agent.queueMessage(navMessage);
+		console.log("Queued navigation message for tab switch to", tab.url);
 	}
 });
 
@@ -404,6 +462,13 @@ window.addEventListener("keydown", (e) => {
 	if ((e.metaKey || e.ctrlKey) && e.key === "u") {
 		e.preventDefault();
 		window.location.href = "./debug.html";
+	}
+});
+
+// Listen for toggle command from background script
+browserAPI.runtime.onMessage.addListener((message: { type: string }) => {
+	if (message.type === "toggle-sidepanel") {
+		window.close();
 	}
 });
 
@@ -433,6 +498,17 @@ async function initApp() {
 		await UserScriptsPermissionDialog.request();
 	}
 
+	// Initialize default skills
+	const { initializeDefaultSkills } = await import("./tools/skill.js");
+	await initializeDefaultSkills();
+
+	// Initialize default proxy settings if not set
+	const proxyEnabled = await storage.settings.get<boolean>("proxy.enabled");
+	if (proxyEnabled === null) {
+		await storage.settings.set("proxy.enabled", true);
+		await storage.settings.set("proxy.url", "https://corsproxy.io");
+	}
+
 	// Create ChatPanel
 	chatPanel = new ChatPanel();
 
@@ -441,12 +517,27 @@ async function initApp() {
 	let sessionIdFromUrl = urlParams.get("session");
 	const isNewSession = urlParams.get("new") === "true";
 	const testStepsParam = urlParams.get("teststeps");
+	const testProvider = urlParams.get("provider");
+	const testModel = urlParams.get("model");
 
 	// Handle test prompts - create temporary session without saving
 	if (testStepsParam) {
 		try {
 			const testSteps = JSON.parse(decodeURIComponent(testStepsParam)) as string[];
-			await createAgent();
+
+			// Set model if specified
+			let initialState: Partial<AgentState> | undefined;
+			if (testProvider && testModel) {
+				const model = getModel(testProvider as any, testModel);
+				if (model) {
+					initialState = {
+						systemPrompt,
+						model,
+					};
+				}
+			}
+
+			await createAgent(initialState, false);
 			renderApp();
 
 			// Wait for UI to render
@@ -515,8 +606,20 @@ async function initApp() {
 		}
 	}
 
-	// No session - create new agent
+	// No session - create new agent with welcome message
 	await createAgent();
+
+	// Add welcome message for new sessions
+	if (agent) {
+		const welcomeMessage = createWelcomeMessage([
+			{ label: "What is Sitegeist?", prompt: "I'm not technical - walk me through what you can do step by step. Show me use cases like web scraping, automation, research, etc. by actually demonstrating them. Explain everything in detail as you go, and let's work together - you show something, explain it, then let me try. Don't be afraid to try creative things! But start with the basics." },
+			{ label: "Analyze YouTube Video", prompt: "Find the newest Veritasium video and summarize its beats. Give me timestamps for each beat. Then give me an executive summary for the whole video. Then collect the titles, links, likes and views of their last 20 videos and create a graph for liks and views." },
+			{ label: "Compare Prices", prompt: "Create skills for shop.billa.at and spar.at to search for products. Follow the skills workflow - break it down into small steps we test together: 1) Find search input field, add text, confirm with me the text is there. 2) Try submitting (enter key or button click), ask me if it worked. 3) Extract product name/packaging/price from results. 4) Page through results using UI. Iterate based on my feedback. Once each skill works, save it. Then use both skills to search for Mikado Schokolade and create an artifact comparing prices across both stores." },
+			{ label: "Research Profile", prompt: "Research Mario Zechner - all I know is that he does stuff with computers. Search Google to find his social media, academic history, professional work history, personal interests, passions, family life, birth date, contact details, location, news articles, and whatever else you can think of. Whatever page you find, read it in full. Add links so I can check sources. Create a profile artifact with what would work in a cold email and what to avoid. I need a personal hook, something he'll react to, not corporate slop." },
+		]);
+		agent.appendMessage(welcomeMessage);
+	}
+
 	renderApp();
 }
 

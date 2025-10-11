@@ -39,7 +39,7 @@ function getFallbackFavicon(url: string): string {
 }
 
 @customElement("navigation-message")
-class NavigationMessageElement extends LitElement {
+export class NavigationMessageElement extends LitElement {
 	@property() url!: string;
 	@property() title!: string;
 	@property() favicon?: string;
