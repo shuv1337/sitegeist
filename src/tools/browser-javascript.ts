@@ -475,8 +475,12 @@ export class BrowserJavaScriptTool
 				}
 			}
 
-			// Generate unique sandbox ID for this execution
+			// Generate unique sandbox ID for this execution (used for message routing only)
 			const sandboxId = `userscript_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+
+			// Use fixed worldId for all executions to ensure world configuration persists
+			// This is critical because configureWorld() is per-worldId, not global
+			const FIXED_WORLD_ID = "sitegeist-browser-script";
 
 			// Create runtime providers
 			const consoleProvider = new ConsoleRuntimeProvider();
@@ -515,10 +519,11 @@ export class BrowserJavaScriptTool
 					browser.userScripts &&
 					typeof browser.userScripts.execute === "function"
 				) {
-					// Configure this specific world with CSP that allows eval/inline but blocks all network
+					// Configure the fixed world with CSP that allows eval/inline but blocks all network
+					// Use FIXED worldId so configuration persists across executions
 					try {
 						await browser.userScripts.configureWorld({
-							worldId: sandboxId,
+							worldId: FIXED_WORLD_ID,
 							messaging: true,
 							// Allow eval and inline scripts for code execution, but block ALL network access
 							// Explicitly block common exfiltration vectors: fetch, XHR, WebSocket, img, iframe, etc.
@@ -533,7 +538,7 @@ export class BrowserJavaScriptTool
 						js: [{ code: wrapperCode }],
 						target: { tabId: tab.id },
 						world: "USER_SCRIPT",
-						worldId: sandboxId,
+						worldId: FIXED_WORLD_ID,
 						injectImmediately: true,
 					});
 

@@ -13,21 +13,14 @@ export class NativeInputEventsRuntimeProvider implements SandboxRuntimeProvider 
 
 	getRuntime(): (sandboxId: string) => void {
 		// This function will be stringified and injected into the user script
-		return (sandboxId: string) => {
-			const runtimeApi = ((window as any).browser ?? (window as any).chrome)?.runtime;
-			if (!runtimeApi?.sendMessage) {
-				throw new Error("Extension messaging API is not available in this context");
+		return (_sandboxId: string) => {
+			const sendRuntimeMessage = (window as any).sendRuntimeMessage;
+			if (typeof sendRuntimeMessage !== "function") {
+				throw new Error("sendRuntimeMessage is not available in this context");
 			}
 
-			const sendMessage = async (payload: any) => {
-				return await runtimeApi.sendMessage({ ...payload, sandboxId });
-			};
-
-			// Override bridge implementation with stable reference so page scripts can't clobber chrome.runtime
-			(window as any).sendRuntimeMessage = sendMessage;
-
 			(window as any).nativeClick = async (selector: string): Promise<void> => {
-				const response = await sendMessage({
+				const response = await sendRuntimeMessage({
 					type: "native-input",
 					action: "click",
 					selector,
@@ -36,7 +29,7 @@ export class NativeInputEventsRuntimeProvider implements SandboxRuntimeProvider 
 			};
 
 			(window as any).nativeType = async (selector: string, text: string): Promise<void> => {
-				const response = await sendMessage({
+				const response = await sendRuntimeMessage({
 					type: "native-input",
 					action: "type",
 					selector,
@@ -45,7 +38,7 @@ export class NativeInputEventsRuntimeProvider implements SandboxRuntimeProvider 
 			};
 
 			(window as any).nativePress = async (key: string): Promise<void> => {
-				const response = await sendMessage({
+				const response = await sendRuntimeMessage({
 					type: "native-input",
 					action: "press",
 					key,
