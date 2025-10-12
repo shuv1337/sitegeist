@@ -298,13 +298,13 @@ export class SitegeistSessionListDialog extends DialogBase {
 
 					<div class="flex gap-2 mt-4">
 						<button
-							class="flex-1 px-3 py-2 text-sm font-medium rounded-md border border-border bg-background hover:bg-secondary transition-colors"
+							class="flex-1 px-3 py-2 text-sm font-medium rounded-md border border-border bg-background text-foreground hover:bg-secondary transition-colors"
 							@click=${() => this.handleImport()}
 						>
 							${i18n("Import")}
 						</button>
 						<button
-							class="flex-1 px-3 py-2 text-sm font-medium rounded-md border border-border bg-background hover:bg-secondary transition-colors"
+							class="flex-1 px-3 py-2 text-sm font-medium rounded-md border border-border bg-background text-foreground hover:bg-secondary transition-colors"
 							@click=${() => this.handleExport()}
 						>
 							${i18n("Export All")}

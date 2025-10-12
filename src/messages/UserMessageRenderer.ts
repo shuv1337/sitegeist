@@ -1,6 +1,6 @@
 import { html } from "@mariozechner/mini-lit";
-import type { MessageRenderer, UserMessageWithAttachments } from "@mariozechner/pi-web-ui";
-import { registerMessageRenderer } from "@mariozechner/pi-web-ui";
+import type { Attachment, MessageRenderer } from "@mariozechner/pi-web-ui";
+import { registerMessageRenderer, type UserMessageWithAttachments } from "@mariozechner/pi-web-ui";
 import { LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
@@ -25,7 +25,7 @@ export class SitegeistUserMessage extends LitElement {
 		const content =
 			typeof this.message.content === "string"
 				? this.message.content
-				: this.message.content.find((c) => c.type === "text")?.text || "";
+				: (this.message.content.find((c) => c.type === "text") as { type: "text"; text: string } | undefined)?.text || "";
 
 		return html`
 			<div class="flex justify-start">
@@ -36,7 +36,7 @@ export class SitegeistUserMessage extends LitElement {
 							? html`
 								<div class="mt-3 flex flex-wrap gap-2">
 									${this.message.attachments.map(
-										(attachment) => html` <attachment-tile .attachment=${attachment}></attachment-tile> `,
+										(attachment: Attachment) => html` <attachment-tile .attachment=${attachment}></attachment-tile> `,
 									)}
 								</div>
 							`

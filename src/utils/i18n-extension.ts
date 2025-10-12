@@ -52,6 +52,15 @@ declare module "@mariozechner/mini-lit" {
 		"Waiting...": string;
 		Current: string;
 		Locked: string;
+		"Export failed. Check console for details.": string;
+		"Invalid import file format": string;
+		"Found {count} duplicate sessions. Click OK to overwrite, Cancel to skip duplicates.": string;
+		"Imported {imported} sessions, skipped {skipped} duplicates": string;
+		"Imported {count} sessions": string;
+		"Import failed. Check console for details.": string;
+		Import: string;
+		"Export All": string;
+		Export: string;
 	}
 }
 
@@ -100,6 +109,17 @@ const sitegeistTranslations = {
 		"Waiting...": "Waiting...",
 		Current: "Current",
 		Locked: "Locked",
+		"Export failed. Check console for details.": "Export failed. Check console for details.",
+		"Invalid import file format": "Invalid import file format",
+		"Found {count} duplicate sessions. Click OK to overwrite, Cancel to skip duplicates.":
+			"Found {count} duplicate sessions. Click OK to overwrite, Cancel to skip duplicates.",
+		"Imported {imported} sessions, skipped {skipped} duplicates":
+			"Imported {imported} sessions, skipped {skipped} duplicates",
+		"Imported {count} sessions": "Imported {count} sessions",
+		"Import failed. Check console for details.": "Import failed. Check console for details.",
+		Import: "Import",
+		"Export All": "Export All",
+		Export: "Export",
 	},
 	de: {
 		"Permission request failed": "Berechtigungsanfrage fehlgeschlagen",
@@ -145,6 +165,17 @@ const sitegeistTranslations = {
 		"Waiting...": "Warte...",
 		Current: "Aktuell",
 		Locked: "Gesperrt",
+		"Export failed. Check console for details.": "Export fehlgeschlagen. Prüfen Sie die Konsole für Details.",
+		"Invalid import file format": "Ungültiges Import-Dateiformat",
+		"Found {count} duplicate sessions. Click OK to overwrite, Cancel to skip duplicates.":
+			"{count} doppelte Sitzungen gefunden. OK zum Überschreiben, Abbrechen zum Überspringen.",
+		"Imported {imported} sessions, skipped {skipped} duplicates":
+			"{imported} Sitzungen importiert, {skipped} Duplikate übersprungen",
+		"Imported {count} sessions": "{count} Sitzungen importiert",
+		"Import failed. Check console for details.": "Import fehlgeschlagen. Prüfen Sie die Konsole für Details.",
+		Import: "Importieren",
+		"Export All": "Alle exportieren",
+		Export: "Exportieren",
 	},
 };
 
