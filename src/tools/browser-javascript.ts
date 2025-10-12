@@ -536,7 +536,7 @@ export class BrowserJavaScriptTool
 					// Race execution against abort signal
 					const executePromise = browser.userScripts.execute({
 						js: [{ code: wrapperCode }],
-						target: { tabId: tab.id },
+						target: { tabId: tab.id, allFrames: false },
 						world: "USER_SCRIPT",
 						worldId: FIXED_WORLD_ID,
 						injectImmediately: true,

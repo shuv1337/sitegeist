@@ -38,22 +38,42 @@ function markNavigationEnd() {
 
 const navigateSchema = Type.Union([
 	Type.Object({
-		url: Type.String({ description: "URL to navigate to" }),
+		url: Type.String({ description: "URL to navigate to in current tab" }),
+	}),
+	Type.Object({
+		url: Type.String({ description: "URL to open in new tab" }),
+		newTab: Type.Literal(true, { description: "Open in new tab" }),
 	}),
 	Type.Object({
 		history: Type.Union([Type.Literal("back"), Type.Literal("forward")], {
 			description: "Navigate browser history",
 		}),
 	}),
+	Type.Object({
+		listTabs: Type.Literal(true, { description: "List all open tabs" }),
+	}),
+	Type.Object({
+		switchToTab: Type.Number({ description: "Tab ID to switch to" }),
+	}),
 ]);
 
 export type NavigateParams = Static<typeof navigateSchema>;
 
-export interface NavigateResult {
-	finalUrl: string;
+export interface TabInfo {
+	id: number;
+	url: string;
 	title: string;
+	active: boolean;
 	favicon?: string;
-	skills: Array<{ name: string; shortDescription: string }>;
+}
+
+export interface NavigateResult {
+	finalUrl?: string;
+	title?: string;
+	favicon?: string;
+	skills?: Array<{ name: string; shortDescription: string }>;
+	tabs?: TabInfo[];
+	switchedToTab?: number;
 }
 
 // ============================================================================
@@ -63,12 +83,21 @@ export interface NavigateResult {
 export class NavigateTool implements AgentTool<typeof navigateSchema, NavigateResult> {
 	label = "Navigate";
 	name = "navigate";
-	description = `Navigate to URLs or use browser history.
+	description = `Navigate to URLs, manage tabs, or use browser history.
 
-Use { url: "https://example.com" } to navigate to a URL.
-Use { history: "back" } or { history: "forward" } for browser history.
+Actions:
+- { url: "https://example.com" } - Navigate to URL in current tab
+- { url: "https://example.com", newTab: true } - Open URL in new tab
+- { history: "back" } or { history: "forward" } - Navigate browser history
+- { listTabs: true } - List all open tabs with IDs, URLs, and titles
+- { switchToTab: <tabId> } - Switch to a specific tab by its ID
 
 Returns final URL, page title, and available skills.
+
+Examples:
+- Open Google in new tab: { url: "https://google.com", newTab: true }
+- List all tabs: { listTabs: true }
+- Switch to tab 123: { switchToTab: 123 }
 
 CRITICAL: Use this instead of window.location, history.back/forward in browser_javascript.`;
 	parameters = navigateSchema;
@@ -84,7 +113,17 @@ CRITICAL: Use this instead of window.location, history.back/forward in browser_j
 			throw new Error("Navigation aborted");
 		}
 
-		// Get active tab
+		// Handle list tabs action
+		if ("listTabs" in args) {
+			return this.listTabs();
+		}
+
+		// Handle switch tab action
+		if ("switchToTab" in args) {
+			return this.switchToTab(args.switchToTab);
+		}
+
+		// Get active tab for navigation actions
 		const [tab] = await browser.tabs.query({
 			active: true,
 			currentWindow: true,
@@ -95,22 +134,36 @@ CRITICAL: Use this instead of window.location, history.back/forward in browser_j
 		}
 
 		let finalUrl: string;
+		let targetTabId = tab.id;
 
 		markNavigationStart();
 		try {
 			if ("url" in args) {
-				// Navigate to URL
-				finalUrl = await this.navigateToUrl(tab.id, args.url, signal);
-			} else {
+				// Check if opening in new tab
+				if ("newTab" in args && args.newTab) {
+					finalUrl = await this.openInNewTab(args.url, signal);
+					// Get the newly created tab
+					const tabs = await browser.tabs.query({});
+					const newTab = tabs.find((t: chrome.tabs.Tab) => t.url === finalUrl);
+					if (newTab?.id) {
+						targetTabId = newTab.id;
+					}
+				} else {
+					// Navigate to URL in current tab
+					finalUrl = await this.navigateToUrl(tab.id, args.url, signal);
+				}
+			} else if ("history" in args) {
 				// Navigate history
 				finalUrl = await this.navigateHistory(tab.id, args.history, signal);
+			} else {
+				throw new Error("Invalid navigation parameters");
 			}
 		} finally {
 			markNavigationEnd();
 		}
 
 		// Get updated tab info
-		const updatedTab = await browser.tabs.get(tab.id);
+		const updatedTab = await browser.tabs.get(targetTabId);
 		const title = updatedTab.title || "Untitled";
 		const favicon = updatedTab.favIconUrl;
 
@@ -130,7 +183,13 @@ CRITICAL: Use this instead of window.location, history.back/forward in browser_j
 		};
 
 		// Build output message
-		let output = `Navigated to: ${finalUrl}\n`;
+		let output = "";
+		if ("newTab" in args && args.newTab) {
+			output = `Opened in new tab: ${finalUrl}\n`;
+		} else {
+			output = `Navigated to: ${finalUrl}\n`;
+		}
+
 		if (skills.length > 0) {
 			output += "Available skills:\n";
 			for (const skill of skills) {
@@ -276,6 +335,129 @@ CRITICAL: Use this instead of window.location, history.back/forward in browser_j
 				});
 		});
 	}
+
+	private async openInNewTab(url: string, signal?: AbortSignal): Promise<string> {
+		if (signal?.aborted) {
+			throw new Error("Aborted");
+		}
+
+		const newTab = await browser.tabs.create({ url, active: true });
+
+		if (!newTab.id) {
+			throw new Error("Failed to create new tab");
+		}
+
+		// Wait for the tab to load
+		return new Promise((resolve, reject) => {
+			if (signal?.aborted) {
+				reject(new Error("Aborted"));
+				return;
+			}
+
+			const listener = (
+				details: chrome.webNavigation.WebNavigationFramedCallbackDetails,
+			) => {
+				if (details.tabId === newTab.id && details.frameId === 0) {
+					browser.webNavigation.onDOMContentLoaded.removeListener(listener);
+					if (abortListener) signal?.removeEventListener("abort", abortListener);
+					resolve(details.url);
+				}
+			};
+
+			const abortListener = () => {
+				if (browser.webNavigation?.onDOMContentLoaded) {
+					browser.webNavigation.onDOMContentLoaded.removeListener(listener);
+				}
+				reject(new Error("Aborted"));
+			};
+
+			if (signal) {
+				signal.addEventListener("abort", abortListener);
+			}
+
+			chrome.webNavigation.onDOMContentLoaded.addListener(listener);
+		});
+	}
+
+	private async listTabs(): Promise<{ output: string; details: NavigateResult }> {
+		const tabs = await browser.tabs.query({});
+
+		const tabInfos: TabInfo[] = tabs
+			.filter((t: chrome.tabs.Tab): t is chrome.tabs.Tab & { id: number; url: string } =>
+				t.id !== undefined && t.url !== undefined
+			)
+			.map((t: chrome.tabs.Tab & { id: number; url: string }) => ({
+				id: t.id,
+				url: t.url,
+				title: t.title || "Untitled",
+				active: t.active || false,
+				favicon: t.favIconUrl,
+			}));
+
+		const details: NavigateResult = {
+			tabs: tabInfos,
+		};
+
+		let output = `Found ${tabInfos.length} open tabs:\n`;
+		for (const tab of tabInfos) {
+			const activeMarker = tab.active ? " [ACTIVE]" : "";
+			output += `  - Tab ${tab.id}: ${tab.title}${activeMarker}\n`;
+			output += `    URL: ${tab.url}\n`;
+		}
+
+		return { output, details };
+	}
+
+	private async switchToTab(tabId: number): Promise<{ output: string; details: NavigateResult }> {
+		// Get the tab to switch to
+		const tab = await browser.tabs.get(tabId);
+
+		if (!tab) {
+			throw new Error(`Tab ${tabId} not found`);
+		}
+
+		// Activate the tab
+		await browser.tabs.update(tabId, { active: true });
+
+		// Focus the window containing the tab
+		if (tab.windowId) {
+			await browser.windows.update(tab.windowId, { focused: true });
+		}
+
+		const finalUrl = tab.url || "";
+		const title = tab.title || "Untitled";
+		const favicon = tab.favIconUrl;
+
+		// Get skills for the tab's URL
+		const skillsRepo = getSitegeistStorage().skills;
+		const matchingSkills = finalUrl ? await skillsRepo.getSkillsForUrl(finalUrl) : [];
+		const skills = matchingSkills.map((s) => ({
+			name: s.name,
+			shortDescription: s.shortDescription,
+		}));
+
+		const details: NavigateResult = {
+			finalUrl,
+			title,
+			favicon,
+			skills,
+			switchedToTab: tabId,
+		};
+
+		let output = `Switched to tab ${tabId}: ${title}\n`;
+		output += `URL: ${finalUrl}\n`;
+
+		if (skills.length > 0) {
+			output += "Available skills:\n";
+			for (const skill of skills) {
+				output += `  - ${skill.name}: ${skill.shortDescription}\n`;
+			}
+		} else {
+			output += "No skills found for domain";
+		}
+
+		return { output, details };
+	}
 }
 
 // ============================================================================
@@ -299,10 +481,16 @@ export const navigateRenderer: ToolRenderer<NavigateParams, NavigateResult> = {
 	): ToolRenderResult {
 		// Loading state (params but no result)
 		if (params && !result) {
-			const displayText =
-				"url" in params
-					? params.url
-					: `history.${params.history}()`;
+			let displayText = "";
+			if ("url" in params) {
+				displayText = params.url;
+			} else if ("history" in params) {
+				displayText = `history.${params.history}()`;
+			} else if ("listTabs" in params) {
+				displayText = "Listing tabs...";
+			} else if ("switchToTab" in params) {
+				displayText = `Switching to tab ${params.switchToTab}`;
+			}
 
 			return {
 				content: html`
@@ -323,43 +511,67 @@ export const navigateRenderer: ToolRenderer<NavigateParams, NavigateResult> = {
 
 		// Complete state (with result)
 		if (result && !result.isError && result.details) {
-			const { finalUrl, title, favicon, skills } = result.details;
-			const faviconUrl = favicon || getFallbackFavicon(finalUrl);
+			const { finalUrl, title, favicon, skills, tabs, switchedToTab } = result.details;
 
-			// Convert skills to Skill objects for SkillPill
-			const skillObjects: Skill[] = skills.map((s) => ({
-				name: s.name,
-				shortDescription: s.shortDescription,
-				description: "",
-				examples: "",
-				library: "",
-				domainPatterns: [],
-				createdAt: new Date().toISOString(),
-				lastUpdated: new Date().toISOString(),
-			}));
+			// Handle tab listing
+			if (tabs) {
+				return {
+					content: html`
+						<div class="my-2 space-y-2">
+							<div class="text-sm font-medium text-muted-foreground">Open tabs (${tabs.length}):</div>
+							${tabs.map((tab) => html`
+								<div class="flex items-center gap-2 px-3 py-2 text-sm bg-card border border-border rounded-lg">
+									${tab.favicon ? html`<img src="${tab.favicon}" alt="" class="w-4 h-4 flex-shrink-0" />` : ""}
+									<span class="truncate flex-1">${tab.title}</span>
+									<span class="text-xs text-muted-foreground">Tab ${tab.id}</span>
+									${tab.active ? html`<span class="text-xs text-primary font-medium">[ACTIVE]</span>` : ""}
+								</div>
+							`)}
+						</div>
+					`,
+					isCustom: true,
+				};
+			}
 
-			return {
-				content: html`
-					<div class="my-2 space-y-2">
-						<button
-							class="inline-flex items-center gap-2 px-3 py-2 text-sm text-card-foreground bg-card border border-border rounded-lg hover:bg-accent/50 transition-colors max-w-full cursor-pointer shadow-lg"
-							@click=${() => browser.tabs.create({ url: finalUrl })}
-							title="${i18n("Click to open")}: ${finalUrl}"
-						>
-							<img src="${faviconUrl}" alt="" class="w-4 h-4 flex-shrink-0" />
-							<span class="truncate font-medium">${title}</span>
-						</button>
-						${skillObjects.length > 0
-							? html`
-									<div class="flex flex-wrap gap-2">
-										${skillObjects.map((s) => SkillPill(s, true))}
-									</div>
-							  `
-							: ""}
-					</div>
-				`,
-				isCustom: true,
-			};
+			// Handle navigation/switch results
+			if (finalUrl && title) {
+				const faviconUrl = favicon || getFallbackFavicon(finalUrl);
+
+				// Convert skills to Skill objects for SkillPill
+				const skillObjects: Skill[] = (skills || []).map((s) => ({
+					name: s.name,
+					shortDescription: s.shortDescription,
+					description: "",
+					examples: "",
+					library: "",
+					domainPatterns: [],
+					createdAt: new Date().toISOString(),
+					lastUpdated: new Date().toISOString(),
+				}));
+
+				return {
+					content: html`
+						<div class="my-2 space-y-2">
+							<button
+								class="inline-flex items-center gap-2 px-3 py-2 text-sm text-card-foreground bg-card border border-border rounded-lg hover:bg-accent/50 transition-colors max-w-full cursor-pointer shadow-lg"
+								@click=${() => browser.tabs.create({ url: finalUrl })}
+								title="${i18n("Click to open")}: ${finalUrl}"
+							>
+								<img src="${faviconUrl}" alt="" class="w-4 h-4 flex-shrink-0" />
+								<span class="truncate font-medium">${title}</span>
+							</button>
+							${skillObjects.length > 0
+								? html`
+										<div class="flex flex-wrap gap-2">
+											${skillObjects.map((s) => SkillPill(s, true))}
+										</div>
+								  `
+								: ""}
+						</div>
+					`,
+					isCustom: true,
+				};
+			}
 		}
 
 		// Error state

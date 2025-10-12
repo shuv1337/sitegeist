@@ -158,6 +158,50 @@ Skills save time and are tested - always check for and use them before writing c
 `;
 
 // ============================================================================
+// Native Input Events Runtime Provider
+// ============================================================================
+
+export const NATIVE_INPUT_EVENTS_DESCRIPTION = `Native Input Events (Trusted Browser Events):
+When regular JavaScript clicks/typing don't work (pages detect/block fake events), use these functions that dispatch REAL browser events:
+
+- await nativeClick(selector) - Click element using trusted browser event
+  * Finds element via selector, dispatches real mouse click at its center
+  * Example: await nativeClick('button[aria-label="Send"]')
+  * Throws error if selector not found
+
+- await nativeType(selector, text) - Type text into element using trusted keyboard events
+  * Focuses element, types each character as real keyboard input
+  * Example: await nativeType('input[name="email"]', 'test@example.com')
+  * Throws error if selector not found
+
+- await nativePress(key) - Press keyboard key (keyDown + keyUp) using trusted keyboard event
+  * Simulates complete key press with proper key codes for maximum compatibility
+  * Supported keys: ArrowRight, ArrowLeft, ArrowUp, ArrowDown, Enter, Tab, Escape, Backspace, Delete, Home, End, PageUp, PageDown, Shift, Control, Alt, Meta, F1-F12, Space, Insert
+  * Example: await nativePress('Enter')
+  * Example: await nativePress('ArrowRight')
+  * Example: await nativePress('Escape')
+  * Throws error if key name is not supported
+
+- await nativeKeyDown(key) - Press key down (without releasing)
+  * Use for key combinations and modifier keys
+  * Supported keys: same as nativePress
+  * Example: await nativeKeyDown('Control'); await nativeKeyDown('a'); await nativeKeyUp('a'); await nativeKeyUp('Control');
+  * Must be paired with nativeKeyUp to release the key
+
+- await nativeKeyUp(key) - Release key
+  * Use after nativeKeyDown to complete key press
+  * Supported keys: same as nativePress
+  * Example: await nativeKeyDown('Shift'); await nativeKeyDown('ArrowRight'); await nativeKeyUp('ArrowRight'); await nativeKeyUp('Shift');
+
+Key Combination Examples:
+  * Ctrl+A (Select All): await nativeKeyDown('Control'); await nativeKeyDown('a'); await nativeKeyUp('a'); await nativeKeyUp('Control');
+  * Ctrl+Home (Go to start): await nativeKeyDown('Control'); await nativeKeyDown('Home'); await nativeKeyUp('Home'); await nativeKeyUp('Control');
+  * Shift+End (Select to end): await nativeKeyDown('Shift'); await nativeKeyDown('End'); await nativeKeyUp('End'); await nativeKeyUp('Shift');
+
+Use cases: Google Sheets navigation/selection, keyboard shortcuts, WhatsApp automation, sites with anti-bot protection, React apps that ignore synthetic events
+Note: These use Chrome's debugger API for trusted events. Regular clicks/typing work fine for most sites.`;
+
+// ============================================================================
 // Browser JavaScript Tool
 // ============================================================================
 
@@ -194,26 +238,7 @@ Output:
 
 ${ARTIFACTS_RUNTIME_PROVIDER_DESCRIPTION}
 
-Native Input Events (Trusted Browser Events):
-When regular JavaScript clicks/typing don't work (pages detect/block fake events), use these functions that dispatch REAL browser events:
-
-- await nativeClick(selector) - Click element using trusted browser event
-  * Finds element via selector, dispatches real mouse click at its center
-  * Example: await nativeClick('button[aria-label="Send"]')
-  * Throws error if selector not found
-
-- await nativeType(selector, text) - Type text into element using trusted keyboard events
-  * Focuses element, types each character as real keyboard input
-  * Example: await nativeType('input[name="email"]', 'test@example.com')
-  * Throws error if selector not found
-
-- await nativePress(key) - Press keyboard key using trusted keyboard event
-  * Simulates real key press (Enter, Escape, Tab, ArrowUp, ArrowDown, etc.)
-  * Example: await nativePress('Enter')
-  * Example: await nativePress('Escape')
-
-Use cases: WhatsApp automation, sites with anti-bot protection, React apps that ignore synthetic events
-Note: These use Chrome's debugger API for trusted events. Regular clicks/typing work fine for most sites.
+${NATIVE_INPUT_EVENTS_DESCRIPTION}
 
 - return <value> - To capture and display a return value, you MUST use an explicit return statement
   * REQUIRED: Use return if you want to show a value in the output
@@ -295,6 +320,28 @@ Then use it efficiently:
 
 3. **create** - Create new skill
    { action: "create", data: { name, domainPatterns, shortDescription, description, examples, library } }
+
+   **Domain Pattern Matching (minimatch):**
+   Domain patterns use minimatch glob syntax for flexible URL matching:
+
+   Pattern format: "domain.com/path/pattern"
+   - Domain is matched against hostname (no protocol needed)
+   - Path uses glob patterns:
+     * "*" (single asterisk) matches single path segment (e.g., /spreadsheets/* matches /spreadsheets/abc but NOT /spreadsheets/d/123/edit)
+     * "**" (double asterisk) matches multiple path segments (e.g., /spreadsheets/** matches /spreadsheets/d/123/edit)
+     * "?" matches single character
+
+   Examples:
+   - "docs.google.com/spreadsheets/**" - All Google Sheets URLs
+   - "github.com/*/issues" - Issues page for any repo (single segment)
+   - "github.com/**/pull/*" - Any pull request URL (multiple segments)
+   - "mail.google.com" or "mail.google.com/" - Gmail homepage and all subpages
+   - "*.example.com/**" - All subdomains of example.com
+
+   Common mistakes:
+   - Using * instead of ** for multi-segment paths
+   - Including https:// in pattern (only use domain.com/path)
+   - Forgetting that * doesn't match / characters
 
 4. **update** - Update skill (merges fields)
    { action: "update", name: "skill-name", data: { library: "..." } }
