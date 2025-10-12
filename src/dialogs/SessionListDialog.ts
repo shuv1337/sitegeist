@@ -9,7 +9,7 @@ import {
 import { type SessionMetadata, formatUsage } from "@mariozechner/pi-web-ui";
 import { customElement, state } from "lit/decorators.js";
 import { getAppStorage } from "@mariozechner/pi-web-ui";
-import { getPort } from "../sidepanel.js";
+import { sendPortMessage } from "../sidepanel.js";
 import Fuse from "fuse.js";
 
 // Cross-browser API compatibility
@@ -75,17 +75,10 @@ export class SitegeistSessionListDialog extends DialogBase {
 			this.sessions = await storage.sessions.getAllMetadata();
 
 			// Get lock information from background via port
-			const port = getPort();
-			const lockResponse = await new Promise<{ locks: Record<string, number> }>((resolve) => {
-				const listener = (msg: any) => {
-					if (msg.type === "lockedSessions") {
-						port.onMessage.removeListener(listener);
-						resolve(msg);
-					}
-				};
-				port.onMessage.addListener(listener);
-				port.postMessage({ type: "getLockedSessions" });
-			});
+			const lockResponse = await sendPortMessage<{ locks: Record<string, number> }>(
+				{ type: "getLockedSessions" },
+				"lockedSessions"
+			);
 			this.sessionLocks = lockResponse?.locks || {};
 		} catch (err) {
 			console.error("Failed to load sessions:", err);

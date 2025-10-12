@@ -326,16 +326,23 @@ function setupPortMessageHandler() {
 }
 
 // Send message via port and wait for response
-function sendPortMessage<T = any>(
+// Always ensures port is connected before sending
+export function sendPortMessage<T = any>(
 	message: any,
 	responseType: string,
 ): Promise<T> {
-	return new Promise((resolve) => {
+	return new Promise((resolve, reject) => {
+		const currentPort = ensurePortConnected();
 		portResponseHandlers.set(responseType, (msg: any) => {
 			portResponseHandlers.delete(responseType);
 			resolve(msg);
 		});
-		port.postMessage(message);
+		try {
+			currentPort.postMessage(message);
+		} catch (err) {
+			portResponseHandlers.delete(responseType);
+			reject(err);
+		}
 	});
 }
 
