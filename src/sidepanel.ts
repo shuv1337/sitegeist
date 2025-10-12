@@ -183,9 +183,29 @@ let agentUnsubscribe: (() => void) | undefined;
 let currentWindowId: number | undefined;
 let port: chrome.runtime.Port;
 
-// Export port getter for other modules (e.g., SessionListDialog)
-export function getPort(): chrome.runtime.Port {
+// Reconnect port if disconnected (Chrome disconnects after ~5min inactivity)
+function ensurePortConnected(): chrome.runtime.Port {
+	try {
+		// Test if port is still connected by checking its name property
+		// Disconnected ports throw an error when accessed
+		if (port && port.name) {
+			return port;
+		}
+	} catch (e) {
+		// Port is disconnected, need to reconnect
+	}
+
+	// Reconnect
+	console.log("[Port] Reconnecting after disconnect...");
+	port = browserAPI.runtime.connect({ name: `sidepanel:${currentWindowId}` });
+	setupPortMessageHandler();
 	return port;
+}
+
+// Export port getter for other modules (e.g., SessionListDialog)
+// Always returns a valid, connected port
+export function getPort(): chrome.runtime.Port {
+	return ensurePortConnected();
 }
 
 // Debug function to dump session metadata
@@ -227,6 +247,11 @@ function setupPortMessageHandler() {
 				handler(msg);
 			}
 		}
+	});
+
+	// Handle disconnect events (Chrome disconnects ports after ~5min inactivity)
+	port.onDisconnect.addListener(() => {
+		console.log("[Port] Disconnected (likely due to inactivity). Will reconnect on next use.");
 	});
 }
 
