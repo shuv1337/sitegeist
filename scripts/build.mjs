@@ -23,6 +23,7 @@ const outDir = join(packageRoot, `dist-${targetBrowser}`);
 const entryPoints = {
 	sidepanel: join(packageRoot, "src/sidepanel.ts"),
 	debug: join(packageRoot, "src/debug.ts"),
+	icons: join(packageRoot, "src/icons.ts"),
 	background: join(packageRoot, "src/background.ts"),
 	"tool-renderers": join(packageRoot, "src/tool-renderers.ts"),
 };

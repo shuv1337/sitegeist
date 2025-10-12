@@ -1,7 +1,7 @@
 import { Button, icon, Switch } from "@mariozechner/mini-lit";
 import { getModel } from "@mariozechner/pi-ai";
 import { html, render } from "lit";
-import { ArrowLeft, Play, Bug } from "lucide";
+import { ArrowLeft, Play, Bug, Sparkles } from "lucide";
 import { setAppStorage } from "@mariozechner/pi-web-ui";
 import { SitegeistAppStorage } from "./storage/app-storage.js";
 import "./debug/ReplPanel.js";
@@ -89,6 +89,15 @@ const renderDebugPage = async () => {
 						title: "Back to chat",
 					})}
 					<span class="text-sm font-semibold">Debug</span>
+					${Button({
+						variant: "ghost",
+						size: "sm",
+						children: html`<span class="flex items-center gap-1.5">${icon(Sparkles, "xs")} <span class="text-xs">Icons</span></span>`,
+						onClick: () => {
+							window.location.href = "./icons.html";
+						},
+						title: "Generate extension icons",
+					})}
 				</div>
 				<div class="flex items-center gap-2">
 					${icon(Bug, "sm")}
