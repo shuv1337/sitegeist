@@ -25,13 +25,39 @@ import {
 	type NavigationMessage,
 	registerNavigationRenderer,
 } from "./messages/NavigationMessage.js";
-import { createWelcomeMessage, registerWelcomeRenderer } from "./messages/WelcomeMessage.js";
+import {
+	createWelcomeMessage,
+	registerWelcomeRenderer,
+} from "./messages/WelcomeMessage.js";
 import { SYSTEM_PROMPT } from "./prompts/tool-prompts.js";
 import { SitegeistAppStorage } from "./storage/app-storage.js";
 import { BrowserJavaScriptTool, skillTool } from "./tools/index.js";
 import { isToolNavigating, NavigateTool } from "./tools/navigate.js";
 import "./utils/i18n-extension.js";
 import "./utils/live-reload.js";
+
+const welcomeMessages = [
+	{
+		label: "What is Sitegeist?",
+		prompt:
+			"I'm not technical - introduce me to Sitegeist step by step. First, tell me how to make this side panel wider by dragging its left edge - this helps see outputs better. Then start by searching Google for 'best chocolate chip cookie recipe' to show me the basics. CRITICAL: Keep explanations SHORT - 2-3 sentences max per step. I'm learning a completely new tool with no frame of reference, so less is more. After EACH demonstration, you MUST STOP and wait for me to respond. Ask if I have questions and give me clear options for what to do next (like 'try it yourself', 'see the next capability', or 'explore this deeper'). DO NOT continue to the next lesson until I tell you to. When interacting with page elements (clicking, typing, etc.), ALWAYS scroll them into view first so I can see what's happening. Cover these capabilities one at a time: reading web pages, clicking and interacting with sites, extracting information, automating repetitive tasks, and creating useful outputs. If opportunities naturally arise, briefly demonstrate advanced features like: creating interactive HTML tools, working with PDFs/Word/Excel files, automating YouTube (getting transcripts, comments), or automating WhatsApp - but only if it fits the flow naturally, don't force it. If you create reusable functions for a website, explain that these are called 'skills' and can be saved for future use. Keep examples practical and relatable. Build complexity gradually so I'm never overwhelmed.",
+	},
+	{
+		label: "Research Profile",
+		prompt:
+			"Research Mario Zechner - all I know is that he does stuff with computers. Search Google to find his social media, academic history, professional work history, personal interests, passions, family life, birth date, contact details, location, news articles, and whatever else you can think of. Whatever page you find, read it in full. Add links so I can check sources. Create a profile artifact with what would work in a cold email and what to avoid. I need a personal hook, something he'll react to, not corporate slop.",
+	},
+	{
+		label: "Analyze YouTube Video",
+		prompt:
+			"Find the newest Veritasium video. Identify beats and their start and end timestamp, and summarize each beat. Then give me an executive summary for the whole video. Finally, ask me if i want to jump to a specific beat or if I want an explanation what's currently being said in the video.",
+	},
+	{
+		label: "Compare Prices",
+		prompt:
+			"Create skills for shop.billa.at and spar.at to search for products. Follow the skills workflow - break it down into small steps we test together: 1) Find search input field, add text, and confirm with me the text is there. Use 'Schokolade' as the search term, so we get many results later when we try to figure out paging. 2) Try submitting (enter key or button click), and ask me if it worked. 3) Extract product name/image URL/packaging/price from results. 4) Page through results using UI. Iterate based on my feedback. Once each skill works, save it. Then use both skills to search for Mikado and create an artifact comparing prices across both stores.",
+	},
+];
 
 // Register custom message renderers
 registerNavigationRenderer();
@@ -113,7 +139,10 @@ function setupPortMessageHandler() {
 }
 
 // Send message via port and wait for response
-function sendPortMessage<T = any>(message: any, responseType: string): Promise<T> {
+function sendPortMessage<T = any>(
+	message: any,
+	responseType: string,
+): Promise<T> {
 	return new Promise((resolve) => {
 		portResponseHandlers.set(responseType, (msg: any) => {
 			portResponseHandlers.delete(responseType);
@@ -177,7 +206,10 @@ const updateUrl = (sessionId: string) => {
 	window.history.replaceState({}, "", url);
 };
 
-const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true) => {
+const createAgent = async (
+	initialState?: Partial<AgentState>,
+	shouldSave = true,
+) => {
 	if (agentUnsubscribe) {
 		agentUnsubscribe();
 	}
@@ -326,7 +358,9 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 			let unsubscribe: (() => void) | undefined;
 			unsubscribe = agent.subscribe((event) => {
 				if (event.type === "state-update") {
-					const hasUserMsg = event.state.messages.some((m) => m.role === "user");
+					const hasUserMsg = event.state.messages.some(
+						(m) => m.role === "user",
+					);
 					if (hasUserMsg && unsubscribe) {
 						chatPanel.agentInterface?.setAutoScroll(true);
 						unsubscribe();
@@ -462,9 +496,9 @@ const renderApp = () => {
 						children: icon(Settings, "sm"),
 						onClick: () =>
 							SettingsDialog.open([
+								new SkillsTab(),
 								new ApiKeysTab(),
 								new ProxyTab(),
-								new SkillsTab(),
 							]),
 						title: "Settings",
 					})}
@@ -611,7 +645,9 @@ async function initApp() {
 	// Handle test prompts - create temporary session without saving
 	if (testStepsParam) {
 		try {
-			const testSteps = JSON.parse(decodeURIComponent(testStepsParam)) as string[];
+			const testSteps = JSON.parse(
+				decodeURIComponent(testStepsParam),
+			) as string[];
 
 			// Set model if specified
 			let initialState: Partial<AgentState> | undefined;
@@ -700,12 +736,7 @@ async function initApp() {
 				// Session is locked in another window - show landing page instead
 				await createAgent();
 				if (agent) {
-					const welcomeMessage = createWelcomeMessage([
-						{ label: "What is Sitegeist?", prompt: "I'm not technical - walk me through what you can do step by step. Show me use cases like web scraping, automation, research, etc. by actually demonstrating them. Explain everything in detail as you go, and let's work together - you show something, explain it, then let me try. Don't be afraid to try creative things! But start with the basics." },
-						{ label: "Analyze YouTube Video", prompt: "Find the newest Veritasium video and summarize its beats. Give me timestamps for each beat. Then give me an executive summary for the whole video. Then collect the titles, links, likes and views of their last 20 videos and create a graph for liks and views." },
-						{ label: "Compare Prices", prompt: "Create skills for shop.billa.at and spar.at to search for products. Follow the skills workflow - break it down into small steps we test together: 1) Find search input field, add text, confirm with me the text is there. 2) Try submitting (enter key or button click), ask me if it worked. 3) Extract product name/packaging/price from results. 4) Page through results using UI. Iterate based on my feedback. Once each skill works, save it. Then use both skills to search for Mikado Schokolade and create an artifact comparing prices across both stores." },
-						{ label: "Research Profile", prompt: "Research Mario Zechner - all I know is that he does stuff with computers. Search Google to find his social media, academic history, professional work history, personal interests, passions, family life, birth date, contact details, location, news articles, and whatever else you can think of. Whatever page you find, read it in full. Add links so I can check sources. Create a profile artifact with what would work in a cold email and what to avoid. I need a personal hook, something he'll react to, not corporate slop." },
-					]);
+					const welcomeMessage = createWelcomeMessage(welcomeMessages);
 					agent.appendMessage(welcomeMessage);
 				}
 				renderApp();
@@ -738,12 +769,7 @@ async function initApp() {
 
 	// Add welcome message for new sessions
 	if (agent) {
-		const welcomeMessage = createWelcomeMessage([
-			{ label: "What is Sitegeist?", prompt: "I'm not technical - walk me through what you can do step by step. Show me use cases like web scraping, automation, research, etc. by actually demonstrating them. Explain everything in detail as you go, and let's work together - you show something, explain it, then let me try. Don't be afraid to try creative things! But start with the basics." },
-			{ label: "Analyze YouTube Video", prompt: "Find the newest Veritasium video and summarize its beats. Give me timestamps for each beat. Then give me an executive summary for the whole video. Then collect the titles, links, likes and views of their last 20 videos and create a graph for liks and views." },
-			{ label: "Compare Prices", prompt: "Create skills for shop.billa.at and spar.at to search for products. Follow the skills workflow - break it down into small steps we test together: 1) Find search input field, add text, confirm with me the text is there. 2) Try submitting (enter key or button click), ask me if it worked. 3) Extract product name/packaging/price from results. 4) Page through results using UI. Iterate based on my feedback. Once each skill works, save it. Then use both skills to search for Mikado Schokolade and create an artifact comparing prices across both stores." },
-			{ label: "Research Profile", prompt: "Research Mario Zechner - all I know is that he does stuff with computers. Search Google to find his social media, academic history, professional work history, personal interests, passions, family life, birth date, contact details, location, news articles, and whatever else you can think of. Whatever page you find, read it in full. Add links so I can check sources. Create a profile artifact with what would work in a cold email and what to avoid. I need a personal hook, something he'll react to, not corporate slop." },
-		]);
+		const welcomeMessage = createWelcomeMessage(welcomeMessages);
 		agent.appendMessage(welcomeMessage);
 	}
 

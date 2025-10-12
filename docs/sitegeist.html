@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sitegeist - Installation Guide</title>
+    <link rel="stylesheet" href="app.css">
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"
+        }
+    }
+    </script>
+    <style>
+        body {
+            background-color: var(--background);
+            color: var(--foreground);
+            font-family: var(--font-sans);
+            padding: 3rem 1rem;
+        }
+
+        .container {
+            max-width: 56rem;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+
+        .header h1 {
+            font-size: 2.25rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+        }
+
+        .header p {
+            font-size: 1.25rem;
+            color: var(--muted-foreground);
+        }
+
+        .card {
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(255, 107, 0, 0.3);
+            border-radius: var(--radius);
+        }
+
+        .card h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+        }
+
+        .card h3 {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .card p, .card ol, .card ul {
+            color: var(--muted-foreground);
+        }
+
+        .download-card {
+            text-align: center;
+        }
+
+        .download-btn {
+            display: inline-block;
+            padding: 0.75rem 2rem;
+            font-size: 1rem;
+            font-weight: 500;
+            text-decoration: none;
+            border-radius: 9999px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(135deg, rgba(217, 79, 0, 0.15), rgba(255, 107, 0, 0.15), rgba(212, 165, 0, 0.15));
+            border: 1px solid rgba(255, 107, 0, 0.3);
+            backdrop-filter: blur(10px);
+            color: var(--foreground);
+        }
+
+        .download-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(90deg, transparent, rgba(255, 107, 0, 0.4), transparent);
+            background-size: 200% 100%;
+            animation: shimmer 3s ease-in-out infinite;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .download-btn:hover::before {
+            opacity: 1;
+        }
+
+        .download-btn:hover {
+            transform: translateY(-2px) scale(1.03);
+            background: linear-gradient(135deg, rgba(217, 79, 0, 0.25), rgba(255, 107, 0, 0.25), rgba(212, 165, 0, 0.25));
+            box-shadow: 0 8px 20px -4px rgba(255, 107, 0, 0.5);
+            border-color: rgba(255, 107, 0, 0.5);
+        }
+
+        .download-btn:active {
+            transform: translateY(-1px) scale(1.01);
+        }
+
+        @keyframes shimmer {
+            0%, 100% {
+                background-position: 200% 0;
+            }
+            50% {
+                background-position: -200% 0;
+            }
+        }
+
+        .step-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .step {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .step-number {
+            flex-shrink: 0;
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 9999px;
+            background-color: var(--primary);
+            color: var(--primary-foreground);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+        }
+
+        .step-content {
+            flex: 1;
+        }
+
+        .step-content p {
+            color: var(--muted-foreground);
+        }
+
+        code {
+            background-color: var(--muted);
+            padding: 0.125rem 0.375rem;
+            border-radius: 0.25rem;
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+        }
+
+        kbd {
+            background-color: var(--secondary);
+            padding: 0.125rem 0.375rem;
+            border-radius: 0.25rem;
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            border: 1px solid var(--border);
+        }
+
+        ul {
+            list-style: disc;
+            margin-left: 1.5rem;
+        }
+
+        ol {
+            list-style: decimal;
+            margin-left: 1.5rem;
+        }
+
+        ul, ol {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .example-list {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .example {
+            border-left: 4px solid;
+            padding-left: 1rem;
+            padding-top: 0.5rem;
+            padding-bottom: 0.5rem;
+        }
+
+        .example.blue {
+            border-color: var(--color-blue-500);
+        }
+
+        .example.green {
+            border-color: var(--color-green-500);
+        }
+
+        .example.purple {
+            border-color: var(--color-purple-500);
+        }
+
+        .example.orange {
+            border-color: var(--color-orange-500);
+        }
+
+        .example h3 {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .example p {
+            font-size: 0.875rem;
+            font-style: italic;
+            color: var(--muted-foreground);
+        }
+
+        .alpha-note {
+            background: linear-gradient(135deg, rgba(217, 79, 0, 0.08), rgba(255, 107, 0, 0.08), rgba(212, 165, 0, 0.08));
+            border: 1px solid rgba(255, 107, 0, 0.2);
+            padding: 1rem;
+            margin-top: 1.5rem;
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            color: var(--muted-foreground);
+        }
+
+        .alpha-note strong {
+            color: var(--foreground);
+        }
+
+        .warning h2 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .footer {
+            text-center;
+            color: var(--muted-foreground);
+            font-size: 0.875rem;
+            margin-top: 2rem;
+        }
+
+        .orb-wrapper {
+            width: 400px;
+            height: 400px;
+            margin: 0 auto 2rem auto;
+            display: block;
+            background-color: var(--background);
+        }
+
+        orb-animation {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background-color: var(--background);
+        }
+
+        .orb-container {
+            width: 400px;
+            height: 400px;
+            margin: 0 auto;
+            display: block;
+            background-color: var(--background);
+            opacity: 1;
+            animation: none;
+        }
+
+        .orb-container canvas {
+            background-color: var(--background) !important;
+        }
+
+        @keyframes fadeIn {
+            to {
+                opacity: 1;
+            }
+        }
+
+        .rotating-word {
+            display: inline-block;
+            min-width: 120px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--foreground);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header with Orb Animation -->
+        <div class="header">
+            <h1>Sitegeist</h1>
+            <p>Your AI companion for the web to <span class="rotating-word" id="tagline-word">automate</span></p>
+            <div class="orb-wrapper">
+                <orb-animation></orb-animation>
+            </div>
+        </div>
+
+        <!-- Thank You Card -->
+        <div class="card">
+            <h2>Thank You for Participating!</h2>
+            <p>You're one of the early alpha testers helping me shape this little silly thing. Any and all feedback is welcome—including questions like "wtf is this?" I genuinely appreciate your patience and input as we figure this out together.</p>
+        </div>
+
+        <!-- Installation Instructions -->
+        <div class="card">
+            <h2>Installation Instructions</h2>
+
+            <div class="step-list">
+                <!-- Step 1 -->
+                <div class="step">
+                    <div class="step-number">1</div>
+                    <div class="step-content">
+                        <h3>Check Your Chrome Version</h3>
+                        <p>Make sure you have an up-to-date version of Google Chrome installed.</p>
+                    </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="step">
+                    <div class="step-number">2</div>
+                    <div class="step-content">
+                        <h3>Download Sitegeist</h3>
+                        <p>Click the download button below to get <code>sitegeist-latest.zip</code></p>
+                        <a href="https://mariozechner.at/uploads/sitegeist-latest.zip" class="download-btn" style="margin-top: 1rem; display: inline-block;">
+                            Download Sitegeist (Latest)
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="step">
+                    <div class="step-number">3</div>
+                    <div class="step-content">
+                        <h3>Unzip to a Known Location</h3>
+                        <p>Extract the zip file to an easy-to-find location. For example:</p>
+                        <ul>
+                            <li><strong>Windows:</strong> <code>C:\Users\YourName\Desktop\sitegeist</code></li>
+                            <li><strong>macOS:</strong> <code>~/Desktop/sitegeist</code></li>
+                            <li><strong>Linux:</strong> <code>~/Desktop/sitegeist</code></li>
+                        </ul>
+                        <p>After unzipping, you should have a folder named <code>sitegeist</code> containing the extension files.</p>
+                    </div>
+                </div>
+
+                <!-- Step 4 -->
+                <div class="step">
+                    <div class="step-number">4</div>
+                    <div class="step-content">
+                        <h3>Open Chrome Extensions Page</h3>
+                        <p>Open Chrome and type <code>chrome://extensions</code> in the address bar, then press Enter.</p>
+                    </div>
+                </div>
+
+                <!-- Step 5 -->
+                <div class="step">
+                    <div class="step-number">5</div>
+                    <div class="step-content">
+                        <h3>Enable Developer Mode</h3>
+                        <p>Toggle the "Developer mode" switch in the top right corner of the extensions page.</p>
+                    </div>
+                </div>
+
+                <!-- Step 6 -->
+                <div class="step">
+                    <div class="step-number">6</div>
+                    <div class="step-content">
+                        <h3>Load Unpacked Extension</h3>
+                        <p>Click the "Load unpacked" button that appears, then select your <code>Desktop/sitegeist</code> folder.</p>
+                    </div>
+                </div>
+
+                <!-- Step 7 -->
+                <div class="step">
+                    <div class="step-number">7</div>
+                    <div class="step-content">
+                        <h3>Configure Extension Settings</h3>
+                        <p>Locate the Sitegeist extension in "All extensions" and click "Details". Make sure the following options are enabled:</p>
+                        <ul>
+                            <li><strong>Allow user scripts</strong></li>
+                            <li><strong>Pin to toolbar</strong></li>
+                            <li><strong>Allow access to file URLs</strong></li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Step 8 -->
+                <div class="step">
+                    <div class="step-number">8</div>
+                    <div class="step-content">
+                        <h3>Open Sitegeist</h3>
+                        <p>Use the keyboard shortcut to open/close Sitegeist:</p>
+                        <ul>
+                            <li><strong>macOS:</strong> <kbd>CMD</kbd> + <kbd>SHIFT</kbd> + <kbd>P</kbd></li>
+                            <li><strong>Windows/Linux:</strong> <kbd>CTRL</kbd> + <kbd>SHIFT</kbd> + <kbd>P</kbd></li>
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Step 9 -->
+                <div class="step">
+                    <div class="step-number">9</div>
+                    <div class="step-content">
+                        <h3>Enter API Token</h3>
+                        <p>On your first message submission, you'll be prompted to enter an API token. Contact Mario to get your token.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Updating Instructions -->
+        <div class="card">
+            <h2>Updating Sitegeist</h2>
+            <ol>
+                <li>Close Chrome completely</li>
+                <li>Download the latest <code>sitegeist-latest.zip</code></li>
+                <li>Unpack the new zip file</li>
+                <li>Replace all files in your existing <code>Desktop/sitegeist</code> folder with the new files</li>
+                <li>Start Chrome again</li>
+            </ol>
+            <p style="margin-top: 1rem;">
+                <strong>Note:</strong> If Sitegeist doesn't open after updating, contact Mario for assistance.
+            </p>
+        </div>
+
+        <!-- Getting Started -->
+        <div class="card">
+            <h2>Getting Started</h2>
+            <p>Open Sitegeist, click on the examples, and try to figure it out. Don't hesitate to yell at Sitegeist if it's not doing what it's supposed to do. Try to work with it collaboratively—correct it, give it feedback, tell it to consider other options if it gets stuck.</p>
+            <p style="margin-top: 1rem;">If you run into issues, call Mario.</p>
+
+            <div class="alpha-note">
+                <strong>Note:</strong> Sitegeist is alpha software. It contains bugs and might do silly things. If you need to immediately stop Sitegeist from doing what it's doing, focus the message input field and press <kbd>Escape</kbd> or click the stop button.
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>© 2025 Sitegeist - Made with ❤️ by Mario Zechner</p>
+        </div>
+    </div>
+
+    <!-- OrbAnimation Component -->
+    <script type="module">
+        import * as THREE from 'three';
+
+        class OrbAnimation extends HTMLElement {
+            constructor() {
+                super();
+                this.time = 0;
+                this.hasFadedIn = false;
+            }
+
+            connectedCallback() {
+                const container = document.createElement('div');
+                container.className = 'orb-container';
+                this.appendChild(container);
+                this.container = container;
+
+                if (this.container) {
+                    this.initThreeJS();
+                    this.animateOrb();
+                }
+            }
+
+            disconnectedCallback() {
+                if (this.animationFrame) {
+                    cancelAnimationFrame(this.animationFrame);
+                }
+                if (this.renderer) {
+                    this.renderer.dispose();
+                }
+            }
+
+            initThreeJS() {
+                // Get theme from localStorage or default to dark
+                const theme = localStorage.getItem('theme') || 'dark';
+                const isDark = theme === 'dark';
+                const backgroundColor = getComputedStyle(this.container).getPropertyValue('background-color') || 'transparent';
+
+                // Scene setup
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(
+                    75,
+                    this.container.clientWidth / this.container.clientHeight,
+                    0.1,
+                    1000
+                );
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+
+                this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+                this.renderer.setPixelRatio(window.devicePixelRatio);
+                this.renderer.setClearColor(0x000000, 0);
+                this.renderer.domElement.style.backgroundColor = backgroundColor;
+                this.renderer.domElement.style.opacity = '0';
+                this.renderer.domElement.style.transition = 'opacity 5.6s cubic-bezier(0.22, 1, 0.01, 0.99)';
+                this.container.appendChild(this.renderer.domElement);
+
+                this.camera.position.z = 5;
+
+                // Vertex shader with morphing distortion
+                const vertexShader = `
+                    varying vec3 vNormal;
+                    varying vec3 vPosition;
+                    varying vec3 vWorldPosition;
+                    uniform float time;
+
+                    void main() {
+                        vNormal = normalize(normalMatrix * normal);
+                        vPosition = position;
+
+                        // Intense morphing distortion
+                        vec3 pos = position;
+                        float t = time * 0.8;
+
+                        // Multiple sine waves creating organic motion
+                        float distort = sin(pos.x * 2.0 + t) * cos(pos.y * 1.5 + t * 1.3) * 0.15;
+                        distort += sin(pos.y * 3.0 + t * 1.7) * cos(pos.z * 2.0 + t * 0.9) * 0.12;
+                        distort += cos(pos.z * 2.5 + t * 1.1) * sin(pos.x * 1.8 + t * 1.5) * 0.1;
+
+                        // Swirling motion
+                        float swirl = sin(length(pos.xy) * 3.0 - t * 2.0) * 0.08;
+
+                        pos += normal * (distort + swirl);
+
+                        vec4 worldPos = modelMatrix * vec4(pos, 1.0);
+                        vWorldPosition = worldPos.xyz;
+
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+                    }
+                `;
+
+                const fragmentShader = `
+                    varying vec3 vNormal;
+                    varying vec3 vPosition;
+                    varying vec3 vWorldPosition;
+                    uniform float time;
+                    uniform vec3 color1;
+                    uniform vec3 color2;
+                    uniform vec3 color3;
+
+                    void main() {
+                        vec3 viewDirection = normalize(cameraPosition - vWorldPosition);
+                        float fresnel = pow(1.0 - abs(dot(viewDirection, vNormal)), 3.0);
+
+                        // Plasma-like color mixing
+                        float t = time * 0.5;
+                        float plasma = sin(vPosition.x * 4.0 + t) +
+                                      sin(vPosition.y * 3.0 + t * 1.3) +
+                                      sin((vPosition.x + vPosition.y) * 2.0 + t * 0.7) +
+                                      cos(length(vPosition.xy) * 5.0 - t * 2.0);
+                        plasma = plasma * 0.25 + 0.5;
+
+                        // Swirling color bands
+                        float bands = sin(length(vPosition.xy) * 8.0 - t * 3.0 + plasma * 2.0) * 0.5 + 0.5;
+
+                        vec3 color = mix(color1, color2, plasma);
+                        color = mix(color, color3, bands);
+
+                        // Lower opacity to prevent white washout, but keep it visible
+                        float pulse = sin(t * 2.0) * 0.1 + 0.9;
+                        float opacity = (0.25 + fresnel * 0.45) * pulse;
+
+                        // Darken the colors for better visibility on light backgrounds
+                        float edge = pow(fresnel, 0.8) * 0.8;
+                        vec3 finalColor = color * (0.5 + edge);
+
+                        gl_FragColor = vec4(finalColor, opacity);
+                    }
+                `;
+
+                // Create main orb with theme-aware colors
+                const orbGeometry = new THREE.SphereGeometry(1.5, 128, 128);
+                const orbMaterial = new THREE.ShaderMaterial({
+                    vertexShader: vertexShader,
+                    fragmentShader: fragmentShader,
+                    uniforms: {
+                        time: { value: 0 },
+                        color1: { value: isDark ? new THREE.Color(0xd94f00) : new THREE.Color(0xff8c00) },
+                        color2: { value: isDark ? new THREE.Color(0xff6b00) : new THREE.Color(0xffa500) },
+                        color3: { value: isDark ? new THREE.Color(0xd4a500) : new THREE.Color(0xffb700) },
+                    },
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    side: THREE.DoubleSide,
+                    depthWrite: false,
+                });
+
+                this.orb = new THREE.Mesh(orbGeometry, orbMaterial);
+                this.scene.add(this.orb);
+
+                // Create inner morphing layer
+                const innerGeometry = new THREE.SphereGeometry(1.2, 128, 128);
+                const innerMaterial = new THREE.ShaderMaterial({
+                    vertexShader: vertexShader,
+                    fragmentShader: fragmentShader,
+                    uniforms: {
+                        time: { value: 0 },
+                        color1: { value: isDark ? new THREE.Color(0x2d8b3d) : new THREE.Color(0x4caf50) },
+                        color2: { value: isDark ? new THREE.Color(0x1565c0) : new THREE.Color(0x2196f3) },
+                        color3: { value: isDark ? new THREE.Color(0x7b1fa2) : new THREE.Color(0x9c27b0) },
+                    },
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    side: THREE.BackSide,
+                    depthWrite: false,
+                });
+
+                this.innerOrb = new THREE.Mesh(innerGeometry, innerMaterial);
+                this.scene.add(this.innerOrb);
+
+                // Create outer wispy layer
+                const outerGeometry = new THREE.SphereGeometry(1.8, 64, 64);
+                const outerMaterial = new THREE.ShaderMaterial({
+                    vertexShader: vertexShader,
+                    fragmentShader: fragmentShader,
+                    uniforms: {
+                        time: { value: 0 },
+                        color1: { value: isDark ? new THREE.Color(0xc2185b) : new THREE.Color(0xe91e63) },
+                        color2: { value: isDark ? new THREE.Color(0xd84315) : new THREE.Color(0xff5722) },
+                        color3: { value: isDark ? new THREE.Color(0x512da8) : new THREE.Color(0x673ab7) },
+                    },
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    side: THREE.DoubleSide,
+                    depthWrite: false,
+                });
+
+                this.outerOrb = new THREE.Mesh(outerGeometry, outerMaterial);
+                this.scene.add(this.outerOrb);
+            }
+
+            animateOrb = () => {
+                if (!this.scene || !this.camera || !this.renderer || !this.orb || !this.innerOrb || !this.outerOrb) {
+                    return;
+                }
+
+                this.time += 0.01;
+
+                // Update shader uniforms with different time speeds
+                this.orb.material.uniforms.time.value = this.time;
+                this.innerOrb.material.uniforms.time.value = this.time * 1.5;
+                this.outerOrb.material.uniforms.time.value = this.time * 0.7;
+
+                // Complex rotating motions for smooshing effect
+                this.orb.rotation.y = this.time * 0.3;
+                this.orb.rotation.x = Math.sin(this.time * 0.5) * 0.4;
+                this.orb.rotation.z = Math.cos(this.time * 0.3) * 0.2;
+
+                // Counter-rotate inner layer
+                this.innerOrb.rotation.y = -this.time * 0.4;
+                this.innerOrb.rotation.x = Math.cos(this.time * 0.6) * 0.5;
+                this.innerOrb.rotation.z = Math.sin(this.time * 0.4) * 0.3;
+
+                // Slow drift for outer layer
+                this.outerOrb.rotation.y = this.time * 0.15;
+                this.outerOrb.rotation.x = Math.sin(this.time * 0.25) * 0.3;
+                this.outerOrb.rotation.z = -Math.cos(this.time * 0.35) * 0.25;
+
+                // Pulsing scale for breathing effect
+                const breathe = 1.0 + Math.sin(this.time * 0.8) * 0.05;
+                this.orb.scale.set(breathe, breathe, breathe);
+
+                const breathe2 = 1.0 + Math.cos(this.time * 1.1) * 0.07;
+                this.innerOrb.scale.set(breathe2, breathe2, breathe2);
+
+                const breathe3 = 1.0 + Math.sin(this.time * 0.6) * 0.08;
+                this.outerOrb.scale.set(breathe3, breathe3, breathe3);
+
+                this.renderer.render(this.scene, this.camera);
+
+                if (!this.hasFadedIn) {
+                    this.hasFadedIn = true;
+                    requestAnimationFrame(() => {
+                        if (this.renderer && this.renderer.domElement) {
+                            this.renderer.domElement.style.opacity = '1';
+                        }
+                    });
+                }
+
+                this.animationFrame = requestAnimationFrame(this.animateOrb);
+            };
+        }
+
+        customElements.define('orb-animation', OrbAnimation);
+    </script>
+
+    <!-- Rotating tagline word -->
+    <script>
+        const taglineWords = ["automate", "write", "transform", "research", "scrape", "create"];
+        let currentWordIndex = 0;
+        const wordElement = document.getElementById('tagline-word');
+
+        setInterval(() => {
+            currentWordIndex = (currentWordIndex + 1) % taglineWords.length;
+            wordElement.textContent = taglineWords[currentWordIndex];
+        }, 2000);
+    </script>
+</body>
+</html>

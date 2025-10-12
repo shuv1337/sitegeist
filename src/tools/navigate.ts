@@ -195,6 +195,29 @@ CRITICAL: Use this instead of window.location, history.back/forward in browser_j
 		direction: "back" | "forward",
 		signal?: AbortSignal,
 	): Promise<string> {
+		if (signal?.aborted) {
+			throw new Error("Aborted");
+		}
+
+		// First check if there's history available in that direction
+		const [result] = await browser.scripting.executeScript({
+			target: { tabId: tabId },
+			func: (dir: "back" | "forward") => {
+				const canNavigate = dir === "back" ? history.length > 1 : false; // Can't reliably detect forward
+				return { canNavigate, currentUrl: location.href };
+			},
+			args: [direction],
+		});
+
+		const { canNavigate, currentUrl } = result.result as { canNavigate: boolean; currentUrl: string };
+
+		// For back navigation, we can check. For forward, we can't know for sure, so we try anyway
+		if (direction === "back" && !canNavigate) {
+			// No history to go back to, return current URL immediately
+			return currentUrl;
+		}
+
+		// Attempt navigation
 		return new Promise((resolve, reject) => {
 			if (signal?.aborted) {
 				reject(new Error("Aborted"));
@@ -208,6 +231,7 @@ CRITICAL: Use this instead of window.location, history.back/forward in browser_j
 				if (details.tabId === tabId && details.frameId === 0) {
 					browser.webNavigation.onCompleted.removeListener(listener);
 					if (abortListener) signal?.removeEventListener("abort", abortListener);
+					if (timeout) clearTimeout(timeout);
 					resolve(details.url);
 				}
 			};
@@ -216,7 +240,8 @@ CRITICAL: Use this instead of window.location, history.back/forward in browser_j
 			const abortListener = () => {
 				if (browser.webNavigation?.onCompleted) {
 					browser.webNavigation.onCompleted.removeListener(listener);
-			}
+				}
+				if (timeout) clearTimeout(timeout);
 				reject(new Error("Aborted"));
 			};
 
@@ -225,6 +250,14 @@ CRITICAL: Use this instead of window.location, history.back/forward in browser_j
 			}
 
 			chrome.webNavigation.onCompleted.addListener(listener);
+
+			// Set a timeout to detect if navigation didn't happen (no history available for forward)
+			const timeout = setTimeout(() => {
+				browser.webNavigation.onCompleted.removeListener(listener);
+				if (abortListener) signal?.removeEventListener("abort", abortListener);
+				// Navigation didn't happen, return current URL
+				resolve(currentUrl);
+			}, 1000); // 1 second timeout
 
 			// Execute history navigation in the page
 			browser.scripting
@@ -238,6 +271,7 @@ CRITICAL: Use this instead of window.location, history.back/forward in browser_j
 				.catch((err: Error) => {
 					browser.webNavigation.onCompleted.removeListener(listener);
 					if (abortListener) signal?.removeEventListener("abort", abortListener);
+					if (timeout) clearTimeout(timeout);
 					reject(err);
 				});
 		});

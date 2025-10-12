@@ -12,9 +12,7 @@ cd ../sitegeist
 npm run build
 
 echo "📦 Creating zip archive..."
-# Get current date and time in YYYY-MM-DD-HHMM format
-CURRENT_DATETIME=$(date +%Y-%m-%d-%H%M)
-ZIP_NAME="sitegeist-${CURRENT_DATETIME}.zip"
+ZIP_NAME="sitegeist-latest.zip"
 
 # Remove old zip if it exists
 rm -f "${ZIP_NAME}"
@@ -32,11 +30,9 @@ cd "${OLDPWD}"
 # Clean up temp directory
 rm -rf "${TEMP_DIR}"
 
-echo "🧹 Cleaning up old sitegeist zips on server..."
-ssh slayer.marioslab.io "cd /home/badlogic/mariozechner.at/html/uploads && rm -f sitegeist-*.zip"
-
 echo "📤 Uploading to server..."
 # Upload using the upload CLI tool
 upload "${ZIP_NAME}"
+upload "docs/sitegeist.html"
 
 echo "✅ Done!"

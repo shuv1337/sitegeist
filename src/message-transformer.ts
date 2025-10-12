@@ -129,10 +129,16 @@ export async function browserMessageTransformer(
 				role: "user",
 				content: `<browser-context>
 ✓ Navigation succeeded: ${nav.title}${tabInfo}
-✓ URL: ${nav.url}${skillsInfo}
+✓ URL: ${nav.url}
+</browser-context>
 
+<skills>
+${skillsInfo}
+</skills>
+
+<instructions>
 DO NOT STOP - This is informational only. CONTINUE IMMEDIATELY with the next step of your multi-step workflow. This message does NOT mean you should wait for user input.
-DO NOT REPEAT THIS MESSAGE BACK TO THE USER!</browser-context>`,
+DO NOT REPEAT THIS MESSAGE BACK TO THE USER!</instructions>`,
 			} as Message);
 		} else if (m.role === "user") {
 			const { attachments, ...rest } = m as any;
