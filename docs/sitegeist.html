@@ -451,6 +451,33 @@
             </div>
         </div>
 
+        <!-- Privacy & Security -->
+        <div class="card">
+            <h2>Privacy & Security</h2>
+
+            <h3>Your Data Stays Private</h3>
+            <p><strong>Settings & API keys:</strong> Stored only on your computer. Never sent anywhere.</p>
+            <p><strong>Chat history:</strong> Stored only on your computer in IndexedDB.</p>
+            <p><strong>When you send messages:</strong> Your message text and any attachments you include are sent to your chosen AI provider (default: Anthropic) to generate responses. These providers are configured to not retain your data or use it for training. Your full chat history is never sent—only the current conversation context needed for the AI to respond.</p>
+            <p><strong>CORS proxy:</strong> ON BY DEFAULT. Needed for Anthropic OAuth tokens. Requests to the AI go through <code>http://corsproxy.io</code> which does not retain or log data. You can run your own proxy locally if you prefer: <a href="https://github.com/badlogic/pi-mono/tree/main/packages/proxy" class="underline">https://github.com/badlogic/pi-mono/tree/main/packages/proxy</a></p>
+
+            <h3 style="margin-top: 1.5rem;">Why Does Sitegeist Need So Many Permissions?</h3>
+            <p>Sitegeist needs special browser permissions to let the AI control your browser. Here's what each permission does in plain English:</p>
+
+            <ul style="margin-top: 1rem;">
+                <li><strong>Storage:</strong> Saves your sessions, settings, and API keys on your computer</li>
+                <li><strong>Unlimited storage:</strong> Prevents the browser from deleting your saved sessions and settings</li>
+                <li><strong>Active tab:</strong> Lets the AI see which website you're currently on</li>
+                <li><strong>Side panel:</strong> Creates the Sitegeist chat interface</li>
+                <li><strong>User scripts:</strong> Allows the AI to run code it generates on the current webpage (this is how it interacts with websites)</li>
+                <li><strong>Web navigation:</strong> Lets the AI navigate to new URLs or go back/forward in your browser history</li>
+                <li><strong>Scripting:</strong> Allows the AI to check your browser history state before navigating</li>
+                <li><strong>Debugger:</strong> For stubborn websites that block automated inputs, this creates real keyboard/mouse events. A banner appears at the top of your browser when this is active</li>
+            </ul>
+
+            <p style="margin-top: 1rem;"><strong>Important:</strong> All these permissions are necessary for the AI to automate tasks on websites. Without them, Sitegeist can't do its job. Your data always stays on your computer unless you explicitly send it in a chat message.</p>
+        </div>
+
         <!-- Footer -->
         <div class="footer">
             <p>© 2025 Sitegeist - Made with spucke and tixo by <a class="underline" href="https://mariozechner.at">Mario Zechner</a></p>
