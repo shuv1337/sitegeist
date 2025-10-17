@@ -480,6 +480,11 @@ Execute JavaScript with access to the user's current page and all browser capabi
 ## Returns
 Console logs and return value from the code execution.
 
+**IMPORTANT:** To return data to yourself, you MUST use an explicit return statement or console.log(). The "last expression as return value" pattern does NOT work. Examples:
+- ✅ const title = await browserjs(() => document.title); return title;
+- ✅ const title = await browserjs(() => document.title); console.log(title);
+- ❌ const title = await browserjs(() => document.title); // no output - title not returned or logged
+
 ## Examples
 
 Read current page:

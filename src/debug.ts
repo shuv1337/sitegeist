@@ -1,6 +1,6 @@
 import { Button, icon, Switch } from "@mariozechner/mini-lit";
 import { getModel } from "@mariozechner/pi-ai";
-import { setAppStorage, setShowJsonMode } from "@mariozechner/pi-web-ui";
+import { setAppStorage } from "@mariozechner/pi-web-ui";
 import { html, render } from "lit";
 import { ArrowLeft, Bug, MousePointer2, Play, Sparkles } from "lucide";
 import "./debug/ReplPanel.js";

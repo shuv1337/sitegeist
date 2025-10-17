@@ -60,7 +60,7 @@ List what you can work with:
 - **PDFs, Word, Excel**: Read, extract data, cross-reference with web data
 - **Code files**: Analyze any text-based files
 
-Tell them: "Use the attachment button in the chat input to attach files."
+Tell them: "Use the attachment button in the chat input to attach files or simply drag and drop the files into the chat area. You can also paste images directly from your clipboard into the chat input."
 
 STOP.
 
@@ -78,7 +78,7 @@ Explain the UI elements:
 - Attachment icon → Attach files to chat
 - Thinking settings (if model supports it) → Off/minimal/low/medium/high. When on, I think before acting, which improves results but takes longer and costs more
 - Model selector → Pick different AI models. If you have Ollama running locally (https://ollama.com), you can select from your local models, so everything is truly local
-- Submit/Stop button → Send message or stop me (can also press ESCAPE key while focused on message editor)
+- Submit/Stop button → Send message or stop me (can also press ESCAPE key while focused on this sidepanel)
 
 STOP.
 
@@ -96,7 +96,7 @@ Ask what they'd like to try or explore next.`,
 	{
 		label: "Research Profile",
 		prompt:
-			"Research Mario Zechner - all I know is that he does stuff with computers. Search Google to find his social media, academic history, professional work history, personal interests, passions, family life, birth date, contact details, location, news articles, and whatever else you can think of. Whatever page you find, read it in full. Add links so I can check sources. Create a profile artifact with what would work in a cold email and what to avoid. I need a personal hook, something he'll react to, not corporate slop.",
+			"Ask me who I want you to research and what I know about them (provide a single sentence like 'John Doe - software developer, works at Google'). Once I provide the person and context, use the repl tool with navigate() and browserjs() to search Google and systematically research them. Find their social media, academic history, professional work history, personal interests, passions, family life, birth date, contact details, location, news articles, and whatever else you can find. For each promising page you discover, navigate to it and extract the full content. Throughout the research process, create a markdown artifact early and continuously update it with findings (add links so I can check sources). When research is complete, analyze everything and update the artifact with a final section on what would work in a cold email and what to avoid. I need a personal hook, something they'll react to, not corporate slop.",
 	},
 	{
 		label: "Analyze YouTube Video",
@@ -106,7 +106,7 @@ Ask what they'd like to try or explore next.`,
 	{
 		label: "Compare Prices",
 		prompt:
-			"Create skills for shop.billa.at and spar.at to search for products. Follow the skills workflow - break it down into small steps we test together: 1) Find search input field, add text, and confirm with me the text is there. Use 'Schokolade' as the search term, so we get many results later when we try to figure out paging. 2) Try submitting (enter key or button click), and ask me if it worked. 3) Extract product name/image URL/packaging/price from results. 4) Page through results using UI. Iterate based on my feedback. Once each skill works, save it. Then use both skills to search for Mikado and create an artifact comparing prices across both stores.",
+			"Create skills for shop.billa.at and spar.at to search for products. The goal is to create a simple function that allows you to scrape the current search result page's products including images. Use the ask_user_which_element tool whenever you're unsure which element is the search box, submit button, or product cards - don't hesitate to ask for visual confirmation. Follow the skills workflow - break it down into small steps we test together using repl with browserjs(): 1) Find search input field (ask me to point it out if unclear), add text, and confirm with me the text is there. Use 'Schokolade' as the search term, so we get many results later when we try to figure out paging. 2) Try submitting (enter key or button click), and ask me if it worked. 3) Extract product name/image URL/packaging/price from results. Use ask_user_which_element to have me point out a product card if the structure isn't clear. 4) Page through results using UI (ask me to point out pagination if needed). Iterate based on my feedback. Once each skill works, save it. Then use both skills to search for Mikado and create an artifact comparing prices across both stores.",
 	},
 	{
 		label: "GitHub Trending to Sheets",
