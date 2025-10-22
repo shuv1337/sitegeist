@@ -16,7 +16,6 @@ const connectWebSocket = () => {
 		};
 
 		ws.onerror = () => {
-			console.log("[HotReload] WebSocket error");
 			// Silent fail - dev server might not be running
 		};
 
