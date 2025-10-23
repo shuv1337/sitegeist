@@ -8,16 +8,16 @@ services:
       caddy: sitegeist.ai
       caddy.reverse_proxy: '{{upstreams 80}}'
     volumes:
-      - ../dist/frontend:/srv:ro
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./dist/frontend:/srv:ro
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
     networks:
       - caddy-network
       - internal
 
   backend:
     build:
-      context: ..
-      dockerfile: infra/Dockerfile.backend
+      context: .
+      dockerfile: ./infra/Dockerfile.backend
     restart: unless-stopped
     working_dir: /app
     stop_grace_period: 5s
@@ -26,12 +26,12 @@ services:
       - DATA_DIR=/data
       - NODE_ENV=production
     volumes:
-      - ../package.json:/app/package.json:ro
-      - ../package-lock.json:/app/package-lock.json:ro
-      - ../dist/backend:/app/dist/backend:ro
-      - ../dist/shared:/app/dist/shared:ro
+      - ./package.json:/app/package.json:ro
+      - ./package-lock.json:/app/package-lock.json:ro
+      - ./dist/backend:/app/dist/backend:ro
+      - ./dist/shared:/app/dist/shared:ro
       - backend_node_modules:/app/node_modules
-      - ../data:/data
+      - ./data:/data
     networks:
       - internal
 
