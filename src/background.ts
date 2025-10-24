@@ -1,16 +1,11 @@
 import type { LockedSessionsMessage, LockResultMessage, SidepanelToBackgroundMessage } from "./utils/port.js";
 
-function toggleSidePanel(tab?: chrome.tabs.Tab) {
-	// Chrome needs a side panel declared in the manifest
+// Called when Sitegeist icon is clicked - opens sidepanel for current tab
+chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
 	const tabId = tab?.id;
 	if (tabId && chrome.sidePanel.open) {
 		chrome.sidePanel.open({ tabId });
 	}
-}
-
-// Chrome needs a side panel declared in the manifest
-chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
-	toggleSidePanel(tab);
 });
 
 // Storage keys for tracking state (persists across service worker sleep)
@@ -93,34 +88,42 @@ chrome.runtime.onConnect.addListener((port: chrome.runtime.Port) => {
 	});
 
 	port.onDisconnect.addListener(() => {
-		// Update cache synchronously
-		openSidepanels.delete(windowId);
-
-		// Release all locks and update sidepanel state in persistent storage
-		chrome.storage.session.get([SESSION_LOCKS_KEY, SIDEPANEL_OPEN_KEY], (data) => {
-			// Release session locks for this window
-			const sessionLocks: Record<string, number> = data[SESSION_LOCKS_KEY] || {};
-			for (const sessionId in sessionLocks) {
-				if (sessionLocks[sessionId] === windowId) {
-					delete sessionLocks[sessionId];
-				}
-			}
-
-			// Mark sidepanel as closed
-			const openWindows = new Set<number>(data[SIDEPANEL_OPEN_KEY] || []);
-			openWindows.delete(windowId);
-
-			// Save both updates atomically
-			chrome.storage.session.set({
-				[SESSION_LOCKS_KEY]: sessionLocks,
-				[SIDEPANEL_OPEN_KEY]: Array.from(openWindows),
-			});
-		});
+		closeSidepanel(windowId, false);
 	});
 });
 
 // Clean up locks when entire window closes (belt-and-suspenders)
 chrome.windows.onRemoved.addListener((windowId: number) => {
+	closeSidepanel(windowId, false);
+});
+
+// Handle keyboard shortcut - toggle sidepanel open/close
+chrome.commands.onCommand.addListener((command: string, sender?: chrome.tabs.Tab) => {
+	if (command === "toggle-sidepanel") {
+		if (!sender?.windowId) {
+			console.log("[Background] Cannot toggle sidepanel: sender windowId not available");
+			return;
+		}
+
+		const windowId = sender.windowId;
+
+		// Check synchronous cache (populated from storage on startup and updated by port events)
+		if (openSidepanels.has(windowId)) {
+			// Sidepanel is open - close it using Chrome 141+ API
+			closeSidepanel(windowId);
+		} else {
+			// Sidepanel is closed - open it
+			chrome.sidePanel.open({ windowId });
+		}
+	}
+});
+
+function closeSidepanel(windowId: number, callCloseOnSidePanelAPI: boolean = true) {
+	if (callCloseOnSidePanelAPI) {
+		// @ts-expect-error 'close' may be missing in some type definitions
+		chrome.sidePanel.close({ windowId });
+	}
+
 	// Update cache synchronously
 	openSidepanels.delete(windowId);
 
@@ -144,26 +147,4 @@ chrome.windows.onRemoved.addListener((windowId: number) => {
 			[SIDEPANEL_OPEN_KEY]: Array.from(openWindows),
 		});
 	});
-});
-
-// Handle keyboard shortcut - toggle sidepanel open/close
-chrome.commands.onCommand.addListener((command: string, sender?: chrome.tabs.Tab) => {
-	if (command === "toggle-sidepanel") {
-		if (!sender?.windowId) {
-			console.log("[Background] Cannot toggle sidepanel: sender windowId not available");
-			return;
-		}
-
-		const windowId = sender.windowId;
-
-		// Check synchronous cache (populated from storage on startup and updated by port events)
-		if (openSidepanels.has(windowId)) {
-			// Sidepanel is open - close it using Chrome 141+ API
-			// @ts-expect-error 'close' may be missing in some type definitions
-			chrome.sidePanel.close({ windowId });
-		} else {
-			// Sidepanel is closed - open it
-			chrome.sidePanel.open({ windowId });
-		}
-	}
-});
+}
