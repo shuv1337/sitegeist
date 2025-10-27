@@ -78,6 +78,12 @@ declare module "@mariozechner/mini-lit" {
 		"Open tabs": string;
 		"Waiting for selection": string;
 		"Preparing element selector...": string;
+		About: string;
+		"AI-powered browser extension for web navigation and interaction": string;
+		"Version:": string;
+		Website: string;
+		Imprint: string;
+		Privacy: string;
 	}
 }
 
@@ -154,6 +160,13 @@ const sitegeistTranslations = {
 		"Open tabs": "Open tabs",
 		"Waiting for selection": "Waiting for selection",
 		"Preparing element selector...": "Preparing element selector...",
+		About: "About",
+		"AI-powered browser extension for web navigation and interaction":
+			"AI-powered browser extension for web navigation and interaction",
+		"Version:": "Version:",
+		Website: "Website",
+		Imprint: "Imprint",
+		Privacy: "Privacy",
 	},
 	de: {
 		"Permission request failed": "Berechtigungsanfrage fehlgeschlagen",
@@ -229,6 +242,13 @@ const sitegeistTranslations = {
 		"Open tabs": "Offene Tabs",
 		"Waiting for selection": "Warte auf Auswahl",
 		"Preparing element selector...": "Bereite Element-Auswahl vor...",
+		About: "Über",
+		"AI-powered browser extension for web navigation and interaction":
+			"KI-gestützte Browser-Erweiterung für Webnavigation und -interaktion",
+		"Version:": "Version:",
+		Website: "Webseite",
+		Imprint: "Impressum",
+		Privacy: "Datenschutz",
 	},
 };
 

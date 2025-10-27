@@ -18,6 +18,7 @@ import {
 } from "@mariozechner/pi-web-ui";
 import { html, render } from "lit";
 import { History, Plus, Settings } from "lucide";
+import { AboutTab } from "./dialogs/AboutTab.js";
 import { CostsTab } from "./dialogs/CostsTab.js";
 import { SessionCostDialog } from "./dialogs/SessionCostDialog.js";
 import { SitegeistSessionListDialog } from "./dialogs/SessionListDialog.js";
@@ -538,7 +539,13 @@ const renderApp = () => {
 						size: "sm",
 						children: icon(Settings, "sm"),
 						onClick: () =>
-							SettingsDialog.open([new CostsTab(), new SkillsTab(), new ApiKeysTab(), new ProxyTab()]),
+							SettingsDialog.open([
+								new CostsTab(),
+								new SkillsTab(),
+								new ApiKeysTab(),
+								new ProxyTab(),
+								new AboutTab(),
+							]),
 						title: "Settings",
 					})}
 				</div>

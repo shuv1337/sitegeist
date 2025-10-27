@@ -326,7 +326,7 @@ export class CostsTab extends SettingsTab {
 				<!-- Stacked Bar Chart -->
 				<div class="p-4 rounded-lg border border-border bg-background">
 					<h3 class="text-sm font-medium mb-4">Daily Costs by Model</h3>
-					<div style="height: 200px">
+					<div style="height: min(400px, 40vh)">
 						<canvas id="line-chart"></canvas>
 					</div>
 				</div>
@@ -372,7 +372,7 @@ export class CostsTab extends SettingsTab {
 				<!-- Info note -->
 				<div class="text-xs text-muted-foreground p-3 rounded-lg border border-border bg-secondary/20">
 					<strong>Note:</strong> Costs are tracked independently from sessions. Deleting sessions will not affect cost
-					history.
+					history. Aborted requests may not capture full token usage.
 				</div>
 			</div>
 		`;
