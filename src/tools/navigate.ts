@@ -1,7 +1,8 @@
-import { html, i18n, icon } from "@mariozechner/mini-lit";
+import { i18n, icon } from "@mariozechner/mini-lit";
 import type { AgentTool, ToolResultMessage } from "@mariozechner/pi-ai";
 import { registerToolRenderer, type ToolRenderer, type ToolRenderResult } from "@mariozechner/pi-web-ui";
 import { type Static, Type } from "@sinclair/typebox";
+import { html } from "lit";
 import { Loader2 } from "lucide";
 import { SkillPill } from "../components/SkillPill.js";
 import { TabPill } from "../components/TabPill.js";
@@ -71,7 +72,7 @@ export class NavigateTool implements AgentTool<typeof navigateSchema, NavigateRe
 		_toolCallId: string,
 		args: NavigateParams,
 		signal?: AbortSignal,
-	): Promise<{ output: string; details: NavigateResult }> {
+	): Promise<{ content: Array<{ type: "text"; text: string }>; details: NavigateResult }> {
 		if (signal?.aborted) {
 			throw new Error("Navigation aborted");
 		}
@@ -170,7 +171,7 @@ export class NavigateTool implements AgentTool<typeof navigateSchema, NavigateRe
 
 		output += `\n${skillsOutput}`;
 
-		return { output, details };
+		return { content: [{ type: "text", text: output }], details };
 	}
 
 	private async navigateToUrl(tabId: number, url: string, signal?: AbortSignal): Promise<string> {
@@ -255,7 +256,7 @@ export class NavigateTool implements AgentTool<typeof navigateSchema, NavigateRe
 		});
 	}
 
-	private async listTabs(): Promise<{ output: string; details: NavigateResult }> {
+	private async listTabs(): Promise<{ content: Array<{ type: "text"; text: string }>; details: NavigateResult }> {
 		const tabs = await chrome.tabs.query({});
 
 		const tabInfos: TabInfo[] = tabs
@@ -282,10 +283,12 @@ export class NavigateTool implements AgentTool<typeof navigateSchema, NavigateRe
 			output += `    URL: ${tab.url}\n`;
 		}
 
-		return { output, details };
+		return { content: [{ type: "text", text: output }], details };
 	}
 
-	private async switchToTab(tabId: number): Promise<{ output: string; details: NavigateResult }> {
+	private async switchToTab(
+		tabId: number,
+	): Promise<{ content: Array<{ type: "text"; text: string }>; details: NavigateResult }> {
 		// Ensure tabId is a number (in case it comes through as string)
 		const numericTabId = typeof tabId === "string" ? parseInt(tabId, 10) : tabId;
 
@@ -341,7 +344,7 @@ export class NavigateTool implements AgentTool<typeof navigateSchema, NavigateRe
 		output += `URL: ${finalUrl}\n`;
 		output += `\n${skillsOutput}`;
 
-		return { output, details };
+		return { content: [{ type: "text", text: output }], details };
 	}
 }
 
@@ -459,10 +462,11 @@ export const navigateRenderer: ToolRenderer<NavigateParams, NavigateResult> = {
 
 		// Error state
 		if (result?.isError) {
+			const errorText = result.content.find((c) => c.type === "text")?.text || "Unknown error";
 			return {
 				content: html`
 					<div class="my-2">
-						<div class="text-sm text-destructive">${result.output}</div>
+						<div class="text-sm text-destructive">${errorText}</div>
 					</div>
 				`,
 				isCustom: true,

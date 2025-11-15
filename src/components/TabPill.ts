@@ -1,4 +1,4 @@
-import { html, type TemplateResult } from "@mariozechner/mini-lit";
+import { html, type TemplateResult } from "lit";
 import type { TabInfo } from "../tools/navigate.js";
 
 export function TabPill(tab: TabInfo, clickable = true): TemplateResult {

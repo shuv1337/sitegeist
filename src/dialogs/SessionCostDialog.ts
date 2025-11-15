@@ -1,9 +1,11 @@
-import { DialogBase, html, icon } from "@mariozechner/mini-lit";
 import "@mariozechner/mini-lit/dist/MarkdownBlock.js";
+import { DialogBase } from "@mariozechner/mini-lit/dist/DialogBase.js";
+import { icon } from "@mariozechner/mini-lit/dist/icons.js";
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import type { AppMessage } from "@mariozechner/pi-web-ui";
 import { Chart, type ChartConfiguration, registerables } from "chart.js";
 import type { PropertyValues } from "lit";
+import { html } from "lit";
 import { DollarSign } from "lucide";
 
 // Register Chart.js components

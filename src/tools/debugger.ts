@@ -1,4 +1,3 @@
-import { html } from "@mariozechner/mini-lit";
 import { type AgentTool, StringEnum, type ToolResultMessage } from "@mariozechner/pi-ai";
 import {
 	registerToolRenderer,
@@ -8,6 +7,7 @@ import {
 	type ToolRenderResult,
 } from "@mariozechner/pi-web-ui";
 import { type Static, Type } from "@sinclair/typebox";
+import { html } from "lit";
 import { createRef, ref } from "lit/directives/ref.js";
 import { Bug } from "lucide";
 
@@ -67,7 +67,7 @@ CRITICAL: Use browserjs() and repl tool for DOM manipulation. Use this ONLY for 
 		_toolCallId: string,
 		args: DebuggerParams,
 		signal?: AbortSignal,
-	): Promise<{ output: string; details: DebuggerResult }> {
+	): Promise<{ content: Array<{ type: "text"; text: string }>; details: DebuggerResult }> {
 		if (signal?.aborted) {
 			throw new Error("Debugger command aborted");
 		}
@@ -111,7 +111,7 @@ CRITICAL: Use browserjs() and repl tool for DOM manipulation. Use this ONLY for 
 					const cookies = await chrome.cookies.getAll({ url: tab.url });
 					const output = cookies.map((c: { name: string; value: string }) => `${c.name}: ${c.value}`).join("\n");
 					const details: DebuggerResult = { value: cookies };
-					return { output, details };
+					return { content: [{ type: "text", text: output }], details };
 				} catch (err: any) {
 					throw new Error(`Failed to get cookies: ${err.message}`);
 				}
@@ -152,7 +152,7 @@ CRITICAL: Use browserjs() and repl tool for DOM manipulation. Use this ONLY for 
 					output = JSON.stringify(result, null, 2);
 				}
 
-				return { output, details };
+				return { content: [{ type: "text", text: output }], details };
 			}
 
 			throw new Error(`Unknown action: ${args.action}`);
@@ -181,7 +181,7 @@ export const debuggerRenderer: ToolRenderer<DebuggerParams, DebuggerResult> = {
 
 		// With result: show params + result
 		if (result && params) {
-			const output = result.output || "";
+			const output = result.content.find((c) => c.type === "text")?.text || "";
 			const title = params.action === "cookies" ? "Get Cookies" : "MAIN World";
 
 			return {

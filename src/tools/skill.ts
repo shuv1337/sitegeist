@@ -1,5 +1,7 @@
-import { Diff, html, i18n, icon, type TemplateResult } from "@mariozechner/mini-lit";
 import "@mariozechner/mini-lit/dist/MarkdownBlock.js";
+import { icon } from "@mariozechner/mini-lit";
+import { Diff } from "@mariozechner/mini-lit/dist/Diff.js";
+import i18n from "@mariozechner/mini-lit/dist/i18n.js";
 import { type AgentTool, StringEnum, type ToolResultMessage } from "@mariozechner/pi-ai";
 import {
 	registerToolRenderer,
@@ -10,6 +12,7 @@ import {
 	type ToolRenderResult,
 } from "@mariozechner/pi-web-ui";
 import { type Static, Type } from "@sinclair/typebox";
+import { html, type TemplateResult } from "lit";
 import { createRef, ref } from "lit/directives/ref.js";
 import { Sparkles } from "lucide";
 import { DomainPill } from "../components/DomainPill.js";
@@ -231,7 +234,7 @@ export const skillTool: AgentTool<typeof skillParamsSchema, any> = {
 				}
 
 				return {
-					output: llmOutput,
+					content: [{ type: "text", text: llmOutput }],
 					details: skill,
 				};
 			}
@@ -246,13 +249,13 @@ export const skillTool: AgentTool<typeof skillParamsSchema, any> = {
 				const skillList = await skillsRepo.listSkills(filterUrl);
 				if (skillList.length === 0) {
 					const msg = filterUrl ? "No skills found for specified domain." : "No skills found.";
-					return { output: msg, details: { skills: [] } };
+					return { content: [{ type: "text", text: msg }], details: { skills: [] } };
 				}
 
 				// Token-efficient list for LLM: name: short description
 				const llmOutput = skillList.map((s) => `${s.name}: ${s.shortDescription}`).join("\n");
 				return {
-					output: llmOutput,
+					content: [{ type: "text", text: llmOutput }],
 					details: { skills: skillList },
 				};
 			}
@@ -289,7 +292,7 @@ export const skillTool: AgentTool<typeof skillParamsSchema, any> = {
 				await skillsRepo.saveSkill(newSkill);
 
 				return {
-					output: `Skill '${args.data.name}' created.`,
+					content: [{ type: "text", text: `Skill '${args.data.name}' created.` }],
 					details: newSkill,
 				};
 			}
@@ -338,7 +341,7 @@ export const skillTool: AgentTool<typeof skillParamsSchema, any> = {
 				await skillsRepo.saveSkill(updated);
 
 				return {
-					output: `Skill '${args.name}' rewritten.`,
+					content: [{ type: "text", text: `Skill '${args.name}' rewritten.` }],
 					details: updated,
 				};
 			}
@@ -434,7 +437,7 @@ export const skillTool: AgentTool<typeof skillParamsSchema, any> = {
 				await skillsRepo.saveSkill(updated);
 
 				return {
-					output: `Skill '${args.name}' updated.`,
+					content: [{ type: "text", text: `Skill '${args.name}' updated.` }],
 					details: updated,
 				};
 			}
@@ -447,14 +450,14 @@ export const skillTool: AgentTool<typeof skillParamsSchema, any> = {
 				const existing = await skillsRepo.getSkill(args.name);
 				if (!existing) {
 					return {
-						output: `Skill '${args.name}' not found.`,
+						content: [{ type: "text", text: `Skill '${args.name}' not found.` }],
 						details: {},
 					};
 				}
 
 				await skillsRepo.deleteSkill(args.name);
 				return {
-					output: `Skill '${args.name}' deleted.`,
+					content: [{ type: "text", text: `Skill '${args.name}' deleted.` }],
 					details: { name: args.name },
 				};
 			}
@@ -563,7 +566,7 @@ export const skillRenderer: ToolRenderer<SkillParams, SkillResultDetails> = {
 						<div ${ref(contentRef)} class="overflow-hidden transition-all duration-200 ease-in-out max-h-0 space-y-3">
 							${renderSkillFields(params.data, true)}
 							<div class="w-full px-3 py-2 text-sm text-destructive bg-destructive/10 border border-destructive rounded">
-								${result.output || ""}
+								${result.content.find((c) => c.type === "text")?.text || ""}
 							</div>
 						</div>
 					</div>
@@ -576,7 +579,7 @@ export const skillRenderer: ToolRenderer<SkillParams, SkillResultDetails> = {
 				content: html`
 				<div class="space-y-3">
 					${renderHeader(state, Sparkles, headerText)}
-					<div class="text-sm text-destructive">${result.output || ""}</div>
+					<div class="text-sm text-destructive">${result.content.find((c) => c.type === "text")?.text || ""}</div>
 				</div>
 			`,
 				isCustom: false,
@@ -771,7 +774,7 @@ export const skillRenderer: ToolRenderer<SkillParams, SkillResultDetails> = {
 
 				default:
 					return {
-						content: renderHeader(state, Sparkles, result.output || ""),
+						content: renderHeader(state, Sparkles, result.content.find((c) => c.type === "text")?.text || ""),
 						isCustom: false,
 					};
 			}

@@ -1,5 +1,8 @@
-import { DialogBase, html, i18n, icon } from "@mariozechner/mini-lit";
 import "@mariozechner/mini-lit/dist/MarkdownBlock.js";
+import { DialogBase } from "@mariozechner/mini-lit/dist/DialogBase.js";
+import i18n from "@mariozechner/mini-lit/dist/i18n.js";
+import { icon } from "@mariozechner/mini-lit/dist/icons.js";
+import { html } from "lit";
 import { Sparkles } from "lucide";
 import { DomainPill } from "../components/DomainPill.js";
 import type { Skill } from "../storage/stores/skills-store.js";

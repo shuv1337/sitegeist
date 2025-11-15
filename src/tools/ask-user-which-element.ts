@@ -1,4 +1,4 @@
-import { html, i18n, icon } from "@mariozechner/mini-lit";
+import { i18n, icon } from "@mariozechner/mini-lit";
 import type { AgentTool, ToolResultMessage } from "@mariozechner/pi-ai";
 import {
 	registerToolRenderer,
@@ -8,6 +8,7 @@ import {
 	type ToolRenderResult,
 } from "@mariozechner/pi-web-ui";
 import { type Static, Type } from "@sinclair/typebox";
+import { html } from "lit";
 import { createRef, ref } from "lit/directives/ref.js";
 import { Loader2, MousePointer2 } from "lucide";
 import { ASK_USER_WHICH_ELEMENT_TOOL_DESCRIPTION } from "../prompts/prompts.js";
@@ -529,7 +530,7 @@ export class AskUserWhichElementTool implements AgentTool<typeof selectElementSc
 		_toolCallId: string,
 		args: SelectElementParams,
 		signal?: AbortSignal,
-	): Promise<{ output: string; details: SelectElementResult }> {
+	): Promise<{ content: Array<{ type: "text"; text: string }>; details: SelectElementResult }> {
 		try {
 			// Check if already aborted
 			if (signal?.aborted) {
@@ -633,7 +634,7 @@ export class AskUserWhichElementTool implements AgentTool<typeof selectElementSc
 				output += `Size: ${Math.round(result.boundingBox.width)}x${Math.round(result.boundingBox.height)}\n`;
 
 				return {
-					output,
+					content: [{ type: "text", text: output }],
 					details: result,
 				};
 			} catch (error: unknown) {

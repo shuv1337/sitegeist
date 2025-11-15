@@ -1,4 +1,5 @@
-import { Button, icon } from "@mariozechner/mini-lit";
+import { Button } from "@mariozechner/mini-lit/dist/Button.js";
+import { icon } from "@mariozechner/mini-lit/dist/icons.js";
 import { ArtifactsPanel, ArtifactsRuntimeProvider, createJavaScriptReplTool } from "@mariozechner/pi-web-ui";
 import { html, LitElement } from "lit";
 import { customElement, state } from "lit/decorators.js";
@@ -44,7 +45,7 @@ export class ReplPanel extends LitElement {
 				{ code: this.code, title: "Debug REPL" },
 				this.abortController.signal,
 			);
-			this.output = result.output || "No output";
+			this.output = result.content.find((c) => c.type === "text")?.text || "No output";
 		} catch (error: any) {
 			if (error.message === "Execution aborted") {
 				this.output = "Execution aborted by user";

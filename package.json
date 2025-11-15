@@ -29,7 +29,7 @@
 		"lucide": "^0.544.0",
 		"minimatch": "^10.0.3",
 		"ollama": "^0.6.0",
-		"pdfjs-dist": "^5.4.296",
+		"pdfjs-dist": "5.4.394",
 		"three": "^0.180.0",
 		"tsx": "^4.20.6",
 		"xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"

@@ -1,5 +1,6 @@
-import { html, i18n, type TemplateResult } from "@mariozechner/mini-lit";
+import { i18n } from "@mariozechner/mini-lit/dist/i18n.js";
 import { SettingsTab } from "@mariozechner/pi-web-ui";
+import { html, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import "../utils/i18n-extension.js";
 

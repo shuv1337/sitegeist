@@ -1,4 +1,4 @@
-import { html, type TemplateResult } from "@mariozechner/mini-lit";
+import { html, type TemplateResult } from "lit";
 import { getFaviconUrl } from "../utils/favicon.js";
 
 export function DomainPill(domain: string): TemplateResult {

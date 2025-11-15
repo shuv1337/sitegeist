@@ -1,7 +1,6 @@
-import { html } from "@mariozechner/mini-lit";
 import type { Attachment, MessageRenderer } from "@mariozechner/pi-web-ui";
 import { registerMessageRenderer, type UserMessageWithAttachments } from "@mariozechner/pi-web-ui";
-import { LitElement } from "lit";
+import { html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
 /**

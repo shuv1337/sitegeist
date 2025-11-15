@@ -1,4 +1,6 @@
-import { Button, icon, Switch } from "@mariozechner/mini-lit";
+import { Button } from "@mariozechner/mini-lit/dist/Button.js";
+import { icon } from "@mariozechner/mini-lit/dist/icons.js";
+import { Switch } from "@mariozechner/mini-lit/dist/Switch.js";
 import { getModel } from "@mariozechner/pi-ai";
 import { setAppStorage } from "@mariozechner/pi-web-ui";
 import { html, render } from "lit";
@@ -84,7 +86,8 @@ const renderDebugPage = async () => {
 		try {
 			const result = await askUserWhichElementTool.execute("debug-test", {});
 			console.log("[debug] Select element result:", result);
-			alert(`Selected element:\n${result.output}`);
+			const text = result.content.find((c) => c.type === "text")?.text || "No output";
+			alert(`Selected element:\n${text}`);
 		} catch (error) {
 			console.error("[debug] Select element error:", error);
 			alert(`Error: ${error instanceof Error ? error.message : String(error)}`);

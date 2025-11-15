@@ -1,4 +1,5 @@
-import { html, icon, type TemplateResult } from "@mariozechner/mini-lit";
+import { icon } from "@mariozechner/mini-lit/dist/icons.js";
+import { html, type TemplateResult } from "lit";
 import { Sparkles } from "lucide";
 import { SkillDialog } from "../dialogs/SkillDialog.js";
 import type { Skill } from "../storage/stores/skills-store.js";

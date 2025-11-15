@@ -1,4 +1,4 @@
-import { html, i18n } from "@mariozechner/mini-lit";
+import { i18n } from "@mariozechner/mini-lit";
 import type { AgentTool, ToolResultMessage } from "@mariozechner/pi-ai";
 import {
 	type Attachment,
@@ -13,6 +13,7 @@ import {
 	type ToolRenderResult,
 } from "@mariozechner/pi-web-ui";
 import { type Static, Type } from "@sinclair/typebox";
+import { html } from "lit";
 import { createRef, ref } from "lit/directives/ref.js";
 import { Code } from "lucide";
 import { REPL_TOOL_DESCRIPTION } from "../../prompts/prompts.js";
@@ -244,7 +245,7 @@ export function createReplTool(): AgentTool<typeof replSchema, ReplToolResult> &
 					contentBase64: base64,
 				};
 			});
-			return { output: result.output, details: { files } };
+			return { content: [{ type: "text", text: result.output }], details: { files } };
 		},
 	};
 	return tool;
@@ -268,7 +269,7 @@ export const javascriptReplRenderer: ToolRenderer<ReplParams, ReplResult> = {
 
 		// With result: show params + result
 		if (result && params) {
-			const output = result.output || "";
+			const output = result.content.find((c) => c.type === "text")?.text || "";
 			const files = result.details?.files || [];
 
 			const attachments: Attachment[] = files.map((f, i) => {

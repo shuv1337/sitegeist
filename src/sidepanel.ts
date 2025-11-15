@@ -1,4 +1,6 @@
-import { Button, Input, icon } from "@mariozechner/mini-lit";
+import { icon } from "@mariozechner/mini-lit";
+import { Button } from "@mariozechner/mini-lit/dist/Button.js";
+import { Input } from "@mariozechner/mini-lit/dist/Input.js";
 import "@mariozechner/mini-lit/dist/ThemeToggle.js";
 import { type AgentTool, getModel, type Model } from "@mariozechner/pi-ai";
 import {
