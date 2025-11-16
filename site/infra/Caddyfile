@@ -14,6 +14,8 @@
 	# Serve uploads from separate directory
 	handle /uploads/* {
 		root * /
+		# Prevent aggressive caching of zip files - always revalidate
+		header Cache-Control "no-cache, must-revalidate"
 		file_server
 	}
 
