@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+### Added
+
+- `proxy/` — self-hosted CORS proxy service (Node 22, Express, TypeScript, Docker)
+  - Supports `GET|POST|OPTIONS /?url=<encoded-url>` and path-based fallback
+  - Host allowlist (configurable via `ALLOWED_HOSTS` env var)
+  - Optional shared-secret auth via `PROXY_SECRET` env var
+  - In-memory rate limiting (`RATE_LIMIT_RPM`, default 300/min per IP)
+  - Streaming response passthrough for SSE and large payloads
+  - Structured JSON logging (never logs credentials or request bodies)
+  - `docker-compose.yml` for one-command local or production deployment
+
 ## [1.0.0] - 2026-03-15
 
 ### Added

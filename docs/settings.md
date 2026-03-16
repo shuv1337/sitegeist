@@ -61,7 +61,7 @@ const proxyEnabled = await storage.settings.get<boolean>("proxy.enabled");
 
 // Set proxy configuration
 await storage.settings.set("proxy.enabled", true);
-await storage.settings.set("proxy.url", "https://proxy.mariozechner.at/proxy");
+await storage.settings.set("proxy.url", "http://localhost:3001");
 ```
 
 ### Last Used Model
@@ -206,7 +206,7 @@ if (modelId) {
 Always have sensible defaults when settings are missing:
 
 ```typescript
-const proxyUrl = await storage.settings.get<string>("proxy.url") ?? "https://proxy.mariozechner.at/proxy";
+const proxyUrl = await storage.settings.get<string>("proxy.url") ?? "http://localhost:3001";
 const proxyEnabled = await storage.settings.get<boolean>("proxy.enabled") ?? false;
 ```
 
@@ -356,7 +356,7 @@ interface ProxyConfig {
 // Write
 const config: ProxyConfig = {
   enabled: true,
-  url: "https://proxy.mariozechner.at/proxy",
+  url: "http://localhost:3001",
   timeout: 5000,
 };
 await storage.settings.set("proxy", config);

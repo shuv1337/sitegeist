@@ -197,7 +197,7 @@ export class ApiKeysOAuthTab extends SettingsTab {
 					<p class="text-xs ${this.proxyEnabled ? "text-muted-foreground" : "text-destructive"}">
 						${
 							this.proxyEnabled
-								? html`Requests routed through <strong class="text-foreground font-mono text-[10px]">${this.proxyUrl}</strong>. <span class="text-orange-500">An untrusted proxy can see your credentials.</span> Change in Proxy settings.`
+								? html`Subscription requests routed through <strong class="text-foreground font-mono text-[10px]">${this.proxyUrl}</strong>. Only use a proxy you trust. Change in Proxy settings.`
 								: html`<strong>CORS proxy is disabled.</strong> Subscription logins require a proxy. Enable it in Proxy settings.`
 						}
 					</p>

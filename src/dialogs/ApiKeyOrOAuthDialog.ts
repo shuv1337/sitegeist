@@ -123,8 +123,8 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 			return html`
 				<div class="p-3 rounded-lg border border-orange-500/30 bg-orange-500/10">
 					<p class="text-xs text-muted-foreground">
-						Requests routed through <strong class="text-foreground font-mono text-[10px]">${this.proxyUrl}</strong>.
-						<span class="text-orange-500">An untrusted proxy can see your credentials.</span>
+						Subscription requests routed through <strong class="text-foreground font-mono text-[10px]">${this.proxyUrl}</strong>.
+						Only use a proxy you trust.
 					</p>
 				</div>
 			`;

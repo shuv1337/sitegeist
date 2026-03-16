@@ -949,12 +949,12 @@ async function initApp() {
 	// Initialize default proxy settings if not set
 	const proxyEnabled = await storage.settings.get<boolean>("proxy.enabled");
 	if (proxyEnabled === null) {
-		await storage.settings.set("proxy.enabled", true);
-		await storage.settings.set("proxy.url", "https://proxy.mariozechner.at/proxy");
+		await storage.settings.set("proxy.enabled", false);
+		await storage.settings.set("proxy.url", "http://localhost:3001");
 	} else {
 		const proxyUrl = await storage.settings.get<string>("proxy.url");
 		if (proxyUrl === "https://corsproxy.io/" || !proxyUrl) {
-			await storage.settings.set("proxy.url", "https://proxy.mariozechner.at/proxy");
+			await storage.settings.set("proxy.url", "http://localhost:3001");
 		}
 	}
 

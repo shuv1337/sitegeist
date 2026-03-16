@@ -65,7 +65,7 @@ The extension hot-reloads when the dev watcher rebuilds.
 
 On first launch, Sitegeist prompts you to connect at least one AI provider. You can log in with a subscription or enter an API key.
 
-Some subscription logins require the CORS proxy (configurable in Settings > Proxy). The default proxy is `https://proxy.mariozechner.at/proxy`.
+Some subscription logins require a CORS proxy (configurable in Settings > Proxy). You can run your own proxy from the `proxy/` directory in this repo.
 
 ## Checks
 

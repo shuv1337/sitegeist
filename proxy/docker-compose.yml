@@ -1,0 +1,32 @@
+services:
+  cors-proxy:
+    build: .
+    ports:
+      - "${PORT:-3001}:${PORT:-3001}"
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    environment:
+      PORT: "${PORT:-3001}"
+      # Comma-separated list of upstream hostnames the proxy is allowed to forward to.
+      ALLOWED_HOSTS: "${ALLOWED_HOSTS:-platform.claude.com,api.anthropic.com,github.com,api.z.ai,chatgpt.com}"
+      # Shared secret clients must send as X-Proxy-Secret. Leave blank to disable auth (local dev only).
+      PROXY_SECRET: "${PROXY_SECRET:-}"
+      # Max requests per minute per client IP.
+      RATE_LIMIT_RPM: "${RATE_LIMIT_RPM:-300}"
+      # Maximum inbound request body size (Express size string, e.g. 10mb).
+      MAX_BODY_SIZE: "${MAX_BODY_SIZE:-10mb}"
+      # Upstream request timeout in milliseconds.
+      REQUEST_TIMEOUT_MS: "${REQUEST_TIMEOUT_MS:-120000}"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:${PORT:-3001}/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    # Constrain resource usage in production
+    deploy:
+      resources:
+        limits:
+          memory: 256M
