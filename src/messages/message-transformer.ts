@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
-import type { Message } from "@mariozechner/pi-ai";
+import type { ImageContent, Message, TextContent } from "@mariozechner/pi-ai";
+import { convertAttachments, isUserMessageWithAttachments } from "@mariozechner/pi-web-ui";
 import type { NavigationMessage } from "./NavigationMessage.js";
 
 // Helper: Check if a message has toolCall blocks
@@ -84,7 +85,13 @@ export async function browserMessageTransformer(messages: AgentMessage[]): Promi
 		}
 
 		// Filter non-LLM messages
-		if (m.role !== "user" && m.role !== "assistant" && m.role !== "toolResult" && m.role !== "navigation") {
+		if (
+			m.role !== "user" &&
+			m.role !== "user-with-attachments" &&
+			m.role !== "assistant" &&
+			m.role !== "toolResult" &&
+			m.role !== "navigation"
+		) {
 			continue;
 		}
 
@@ -110,6 +117,19 @@ ${skillsInfo}
 - DO NOT STOP - This is informational only. CONTINUE IMMEDIATELY with the next step of your multi-step workflow. This message does NOT mean you should wait for user input.
 - DO NOT REPEAT THIS MESSAGE BACK TO THE USER!
 </instructions>`,
+			} as Message);
+		} else if (isUserMessageWithAttachments(m)) {
+			const content: (TextContent | ImageContent)[] =
+				typeof m.content === "string" ? [{ type: "text", text: m.content }] : [...m.content];
+
+			if (m.attachments) {
+				content.push(...convertAttachments(m.attachments));
+			}
+
+			transformed.push({
+				role: "user",
+				content,
+				timestamp: m.timestamp,
 			} as Message);
 		} else if (m.role === "user") {
 			const { attachments, ...rest } = m as any;
