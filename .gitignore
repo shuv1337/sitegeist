@@ -2,6 +2,7 @@ node_modules/
 proxy/node_modules/
 proxy/dist/
 dist-chrome/
+dist-cli/
 site/dist/
 site/data/
 *.log
