@@ -5,13 +5,18 @@
 	"description": "AI-powered browser extension for web navigation and interaction",
 	"type": "module",
 	"main": "dist/background.js",
+	"bin": {
+		"shuvgeist": "dist-cli/shuvgeist.mjs"
+	},
 	"scripts": {
-		"clean": "rm -rf dist-chrome",
+		"clean": "rm -rf dist-chrome dist-cli",
 		"build:chrome": "node ./scripts/build.mjs && tailwindcss -i ./src/app.css -o ./dist-chrome/app.css --minify",
+		"build:cli": "node ./scripts/build-cli.mjs",
 		"build": "npm run build:chrome",
 		"dev": "concurrently -n \"build,css,server\" -c \"blue,green,yellow\" \"node ./scripts/build.mjs --watch\" \"tailwindcss -i ./src/app.css -o ./dist-chrome/app.css --watch\" \"node ./scripts/dev-server.mjs\"",
 		"typecheck": "tsc --noEmit",
-		"check": "biome check --write . && tsc --noEmit && cd site && npm run check",
+		"typecheck:node": "tsc --noEmit -p tsconfig.node.json",
+		"check": "biome check --write . && tsc --noEmit && tsc --noEmit -p tsconfig.node.json && cd site && npm run check",
 		"prepare": "husky"
 	},
 	"dependencies": {
@@ -40,7 +45,9 @@
 		"@biomejs/biome": "2.3.5",
 		"@tailwindcss/cli": "^4.0.0-beta.14",
 		"@types/chrome": "^0.1.24",
+		"@types/node": "^22.16.0",
 		"@types/webextension-polyfill": "^0.12.4",
+		"@types/ws": "^8.18.1",
 		"concurrently": "^9.2.1",
 		"esbuild": "^0.25.10",
 		"husky": "^9.1.7",

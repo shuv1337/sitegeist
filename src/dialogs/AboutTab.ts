@@ -21,21 +21,8 @@ export class AboutTab extends SettingsTab {
 	}
 
 	private async checkForUpdates() {
-		try {
-			const response = await fetch("https://sitegeist.ai/uploads/version.json", {
-				cache: "no-cache",
-			});
-			const data = await response.json();
-			const currentVersion = chrome.runtime.getManifest().version;
-
-			this.latestVersion = data.version;
-			this.updateAvailable = data.version !== currentVersion;
-			this.checking = false;
-		} catch (err) {
-			console.warn("[AboutTab] Failed to check for updates:", err);
-			this.error = true;
-			this.checking = false;
-		}
+		// Update checks disabled — this fork manages its own releases
+		this.checking = false;
 	}
 
 	private openUpdatePage() {

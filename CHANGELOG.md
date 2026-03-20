@@ -2,8 +2,13 @@
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-03-20
+
 ### Added
 
+- CLI-to-extension bridge: `shuvgeist serve`, `navigate`, `tabs`, `switch`, `repl`, `screenshot`, `eval`, `select`
+- Bridge settings tab in the extension sidepanel (URL, token, connection status)
+- WebSocket relay server with token auth, request routing, and abort handling
 - `proxy/` — self-hosted CORS proxy service (Node 22, Express, TypeScript, Docker)
   - Supports `GET|POST|OPTIONS /?url=<encoded-url>` and path-based fallback
   - Host allowlist (configurable via `ALLOWED_HOSTS` env var)
@@ -12,6 +17,23 @@
   - Streaming response passthrough for SSE and large payloads
   - Structured JSON logging (never logs credentials or request bodies)
   - `docker-compose.yml` for one-command local or production deployment
+
+### Changed
+
+- Screenshots now encode as WebP (quality 80) instead of PNG — ~95% size reduction for token efficiency
+- Default bridge URL pre-populated to `ws://127.0.0.1:19285/ws`
+- Merged upstream: CORS handled locally via `declarativeNetRequest` rules, removing external proxy dependency for OAuth
+
+### Fixed
+
+- Screenshot `captureVisibleTab` failing with `<all_urls>` permission error on bridge-initiated captures
+- Screenshot `fetch()` on data URLs failing in recent Chrome versions (manual base64-to-Blob conversion)
+- Live-reload WebSocket spam in production builds (gated behind `NODE_ENV === "development"`)
+- False "Update Available" notification comparing against upstream sitegeist version
+
+### Removed
+
+- Proxy settings tab (no longer needed with declarativeNetRequest CORS rules)
 
 ## [1.0.0] - 2026-03-15
 

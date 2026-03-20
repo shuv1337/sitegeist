@@ -99,16 +99,34 @@ async function getImageInfoFromPage(
 	return { src: result.src, width: result.width || 0, height: result.height || 0 };
 }
 
+/** Default WebP quality for token-efficient image encoding. */
+const IMAGE_WEBP_QUALITY = 0.8;
+
+/**
+ * Convert a data URL to a Blob without fetch() (Chrome removed fetch on
+ * data: URLs in recent versions).
+ */
+function dataUrlToBlob(dataUrl: string): Blob {
+	const [header, b64] = dataUrl.split(",");
+	const mime = header.match(/:(.*?);/)?.[1] || "application/octet-stream";
+	const binary = atob(b64);
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+	return new Blob([bytes], { type: mime });
+}
+
 /**
  * Fetch an image URL from the extension context (has host_permissions),
- * resize it, and return as base64 ImageContent.
+ * resize it, and return as base64 WebP ImageContent.
+ *
+ * Uses WebP encoding at quality 80 for ~95% size reduction vs PNG,
+ * significantly reducing token usage when images are sent to LLMs.
  */
 async function fetchAndResizeImage(src: string, maxWidth: number): Promise<ImageContent> {
 	let blob: Blob;
 
 	if (src.startsWith("data:")) {
-		const response = await fetch(src);
-		blob = await response.blob();
+		blob = dataUrlToBlob(src);
 	} else {
 		const response = await fetch(src);
 		if (!response.ok) throw new Error(`Failed to fetch image: ${response.status}`);
@@ -128,14 +146,14 @@ async function fetchAndResizeImage(src: string, maxWidth: number): Promise<Image
 	const ctx = canvas.getContext("2d")!;
 	ctx.drawImage(img, 0, 0, w, h);
 
-	const outBlob = await canvas.convertToBlob({ type: "image/png" });
+	const outBlob = await canvas.convertToBlob({ type: "image/webp", quality: IMAGE_WEBP_QUALITY });
 	const reader = new FileReader();
 	const base64 = await new Promise<string>((resolve) => {
 		reader.onload = () => resolve((reader.result as string).split(",")[1]);
 		reader.readAsDataURL(outBlob);
 	});
 
-	return { type: "image", data: base64, mimeType: "image/png" };
+	return { type: "image", data: base64, mimeType: "image/webp" };
 }
 
 async function captureScreenshot(maxWidth: number, windowId: number): Promise<ImageContent> {

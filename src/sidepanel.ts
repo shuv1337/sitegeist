@@ -15,7 +15,6 @@ import {
 	createExtractDocumentTool,
 	createStreamFn,
 	ModelSelector,
-	ProxyTab,
 	SettingsDialog,
 	// PersistentStorageDialog,
 	setAppStorage,
@@ -23,9 +22,11 @@ import {
 } from "@mariozechner/pi-web-ui";
 import { html, render } from "lit";
 import { History, Plus, Settings } from "lucide";
+import { BridgeClient } from "./bridge/extension-client.js";
 import { AboutTab } from "./dialogs/AboutTab.js";
 import { ApiKeyOrOAuthDialog } from "./dialogs/ApiKeyOrOAuthDialog.js";
 import { ApiKeysOAuthTab } from "./dialogs/ApiKeysOAuthTab.js";
+import { BridgeTab, setBridgeSettingsChangeCallback, setBridgeStateForTab } from "./dialogs/BridgeTab.js";
 import { CostsTab } from "./dialogs/CostsTab.js";
 import { SessionCostDialog } from "./dialogs/SessionCostDialog.js";
 import { SitegeistSessionListDialog } from "./dialogs/SessionListDialog.js";
@@ -94,6 +95,36 @@ let chatPanel: ChatPanel;
 let agentUnsubscribe: (() => void) | undefined;
 let currentWindowId: number;
 
+const getBridgeDebuggerMode = async () => {
+	const stored = await chrome.storage.local.get("debuggerMode");
+	return Boolean(stored.debuggerMode);
+};
+
+const syncBridgeConnection = async () => {
+	const bridgeEnabled = (await storage.settings.get<boolean>("bridge.enabled")) ?? false;
+	const bridgeUrl = (await storage.settings.get<string>("bridge.url")) ?? "ws://127.0.0.1:19285/ws";
+	const bridgeToken = (await storage.settings.get<string>("bridge.token")) ?? "";
+	const debuggerEnabled = await getBridgeDebuggerMode();
+
+	if (bridgeEnabled && bridgeUrl && bridgeToken) {
+		bridgeClient.connect({
+			url: bridgeUrl,
+			token: bridgeToken,
+			windowId: currentWindowId,
+			sessionId: currentSessionId,
+			debuggerEnabled,
+			onStateChange: (state, detail) => {
+				setBridgeStateForTab(state, detail);
+				renderApp();
+			},
+		});
+	} else {
+		bridgeClient.disconnect();
+		setBridgeStateForTab("disabled");
+		renderApp();
+	}
+};
+
 // Track which skills we've shown in full (skillName -> lastUpdated timestamp)
 // Reset when a new session/agent is created
 const shownSkills = new Map<string, string>();
@@ -101,6 +132,9 @@ const shownSkills = new Map<string, string>();
 // Track which messages we've already recorded costs for (avoid duplicates)
 // Use Set with message object identity (not cleared on session switch - persists in memory)
 const recordedCostMessages = new Set<AgentMessage>();
+
+// Bridge client for CLI-to-extension communication
+const bridgeClient = new BridgeClient();
 
 // Cached auth type label for the current provider
 let authLabel = "";
@@ -220,7 +254,7 @@ async function hasAnyApiKey(): Promise<boolean> {
 function openApiKeysDialog(): Promise<void> {
 	return new Promise((resolve) => {
 		SettingsDialog.open(
-			[new ApiKeysOAuthTab(), new CostsTab(), new SkillsTab(), new ProxyTab(), new AboutTab()],
+			[new ApiKeysOAuthTab(), new CostsTab(), new SkillsTab(), new BridgeTab(), new AboutTab()],
 			resolve,
 		);
 	});
@@ -486,6 +520,7 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 						}
 					});
 				updateUrl(currentSessionId);
+				void syncBridgeConnection();
 			}
 
 			if (currentSessionId) {
@@ -734,6 +769,17 @@ const renderApp = () => {
 				</div>
 				<div class="flex items-center gap-1 px-2">
 					${agent ? html`<span class="text-[10px] text-muted-foreground truncate max-w-[120px]" title="${agent.state.model.provider}/${agent.state.model.id}${authLabel ? ` (${authLabel})` : ""}">${agent.state.model.provider}${authLabel ? html` <span class="text-[9px] opacity-70">${authLabel}</span>` : ""}</span>` : ""}
+					${
+						bridgeClient.connectionState === "connected"
+							? html`<span class="w-2 h-2 rounded-full bg-green-500" title="Bridge connected"></span>`
+							: bridgeClient.connectionState === "connecting"
+								? html`<span class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" title="Bridge connecting..."></span>`
+								: bridgeClient.connectionState === "error"
+									? html`<span class="w-2 h-2 rounded-full bg-red-500" title="Bridge error: ${bridgeClient.connectionDetail || "unknown"}"></span>`
+									: bridgeClient.connectionState === "disconnected"
+										? html`<span class="w-2 h-2 rounded-full bg-gray-500" title="Bridge disconnected"></span>`
+										: html``
+					}
 					<theme-toggle></theme-toggle>
 					${Button({
 						variant: "ghost",
@@ -744,7 +790,7 @@ const renderApp = () => {
 								new ApiKeysOAuthTab(),
 								new CostsTab(),
 								new SkillsTab(),
-								new ProxyTab(),
+								new BridgeTab(),
 								new AboutTab(),
 							]),
 						title: "Settings",
@@ -766,6 +812,14 @@ const renderApp = () => {
 
 // Listen for tab updates and insert navigation messages only when agent is running
 chrome.tabs.onUpdated.addListener(async (_tabId, changeInfo, tab) => {
+	if (tab.active && tab.windowId === currentWindowId && (changeInfo.url || changeInfo.title) && tab.url) {
+		bridgeClient.sendEvent("active_tab_changed", {
+			url: tab.url,
+			title: tab.title || "",
+			tabId: tab.id,
+		});
+	}
+
 	// Only care about URL changes on the active tab while agent is working
 	// Ignore chrome-extension:// URLs (extension internal pages)
 	// Ignore tool-initiated navigations (handled by the navigate tool itself)
@@ -792,6 +846,16 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 	if (activeInfo.windowId !== currentWindowId) return;
 
 	const tab = await chrome.tabs.get(activeInfo.tabId);
+
+	// Notify bridge of tab change
+	if (tab.url) {
+		bridgeClient.sendEvent("active_tab_changed", {
+			url: tab.url,
+			title: tab.title || "",
+			tabId: tab.id,
+		});
+	}
+
 	// Ignore chrome-extension:// URLs (extension internal pages)
 	// Ignore tool-initiated navigations (handled by the navigate tool itself)
 	if (
@@ -988,6 +1052,12 @@ async function initApp() {
 	// Proxy disabled — CORS is handled locally via declarativeNetRequest rules
 	await storage.settings.set("proxy.enabled", false);
 
+	setBridgeSettingsChangeCallback(() => {
+		void syncBridgeConnection();
+	});
+
+	await syncBridgeConnection();
+
 	// Create ChatPanel
 	chatPanel = new ChatPanel();
 
@@ -1043,6 +1113,7 @@ async function initApp() {
 			}
 
 			currentSessionId = sessionIdFromUrl;
+			await syncBridgeConnection();
 			const metadata = await storage.sessions.getMetadata(sessionIdFromUrl);
 			currentTitle = metadata?.title || "";
 

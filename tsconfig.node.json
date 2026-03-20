@@ -1,22 +1,19 @@
 {
 	"compilerOptions": {
 		"rootDir": "./src",
-		"outDir": "./dist",
-		"lib": ["ES2022", "DOM", "DOM.Iterable"],
+		"outDir": "./dist-cli",
+		"lib": ["ES2022"],
 		"module": "ESNext",
 		"moduleResolution": "Bundler",
 		"target": "ES2022",
-		"types": ["chrome"],
+		"types": ["node"],
 		"strict": true,
 		"esModuleInterop": true,
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true,
 		"resolveJsonModule": true,
 		"isolatedModules": true,
-		"noEmit": true,
-		"experimentalDecorators": true,
-		"useDefineForClassFields": false
+		"noEmit": true
 	},
-	"include": ["src/**/*.ts"],
-	"exclude": ["dist", "node_modules", "src/bridge/server.ts", "src/bridge/cli.ts"]
+	"include": ["src/bridge/protocol.ts", "src/bridge/logging.ts", "src/bridge/server.ts", "src/bridge/cli.ts"]
 }

@@ -94,7 +94,6 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 		}
 	}
 
-
 	protected renderContent() {
 		const supportsOAuth = isOAuthProvider(this.provider);
 

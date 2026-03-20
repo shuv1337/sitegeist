@@ -151,6 +151,7 @@ export type ReplToolResult = {
 				fileName: string;
 				contentBase64: string;
 				mimeType: string;
+				size: number;
 		  }[]
 		| undefined;
 };
