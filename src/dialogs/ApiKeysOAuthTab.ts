@@ -39,8 +39,6 @@ export class ApiKeysOAuthTab extends SettingsTab {
 	private oauthStatuses: Record<string, "none" | "logged-in" | "logging-in" | "error"> = {};
 	private oauthErrors: Record<string, string> = {};
 	private deviceCode: string | null = null;
-	private proxyEnabled = false;
-	private proxyUrl = "";
 
 	getTabName(): string {
 		return "API Keys & OAuth";
@@ -48,36 +46,7 @@ export class ApiKeysOAuthTab extends SettingsTab {
 
 	override async connectedCallback() {
 		super.connectedCallback();
-		await this.refreshProxyStatus();
 		await this.loadOAuthStatuses();
-
-		// Poll proxy settings so changes in the Proxy tab are reflected here
-		this.proxyPollInterval = window.setInterval(() => this.refreshProxyStatus(), 1000);
-	}
-
-	override disconnectedCallback() {
-		super.disconnectedCallback();
-		if (this.proxyPollInterval) {
-			clearInterval(this.proxyPollInterval);
-		}
-	}
-
-	private proxyPollInterval?: number;
-
-	private providerNeedsProxy(provider: OAuthProviderId): boolean {
-		// Google Gemini CLI endpoints have CORS enabled, no proxy needed
-		return provider !== "google-gemini-cli";
-	}
-
-	private async refreshProxyStatus() {
-		const storage = getAppStorage();
-		const enabled = (await storage.settings.get<boolean>("proxy.enabled")) || false;
-		const url = (await storage.settings.get<string>("proxy.url")) || "";
-		if (enabled !== this.proxyEnabled || url !== this.proxyUrl) {
-			this.proxyEnabled = enabled;
-			this.proxyUrl = url;
-			this.requestUpdate();
-		}
 	}
 
 	private async loadOAuthStatuses() {
@@ -104,10 +73,8 @@ export class ApiKeysOAuthTab extends SettingsTab {
 
 		try {
 			const storage = getAppStorage();
-			const proxyEnabled = await storage.settings.get<boolean>("proxy.enabled");
-			const proxyUrl = proxyEnabled ? (await storage.settings.get<string>("proxy.url")) || undefined : undefined;
 
-			const credentials = await oauthLogin(provider, proxyUrl, (info) => {
+			const credentials = await oauthLogin(provider, undefined, (info) => {
 				this.deviceCode = info.userCode;
 				this.requestUpdate();
 			});
@@ -170,8 +137,7 @@ export class ApiKeysOAuthTab extends SettingsTab {
 							: Button({
 									variant: "default",
 									size: "sm",
-									disabled:
-										status === "logging-in" || (this.providerNeedsProxy(provider) && !this.proxyEnabled),
+									disabled: status === "logging-in",
 									loading: status === "logging-in",
 									onClick: () => this.handleLogin(provider),
 									children: "Login",
@@ -193,15 +159,6 @@ export class ApiKeysOAuthTab extends SettingsTab {
 					</p>
 				</div>
 
-				<div class="p-3 rounded-lg border ${this.proxyEnabled ? "border-orange-500/30 bg-orange-500/10" : "border-destructive/50 bg-destructive/10"}">
-					<p class="text-xs ${this.proxyEnabled ? "text-muted-foreground" : "text-destructive"}">
-						${
-							this.proxyEnabled
-								? html`Subscription requests routed through <strong class="text-foreground font-mono text-[10px]">${this.proxyUrl}</strong>. Only use a proxy you trust. Change in Proxy settings.`
-								: html`<strong>CORS proxy is disabled.</strong> Subscription logins require a proxy. Enable it in Proxy settings.`
-						}
-					</p>
-				</div>
 
 				<div class="flex flex-col gap-3">
 					${OAUTH_PROVIDERS.map((p) => this.renderOAuthProvider(p))}

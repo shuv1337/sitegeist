@@ -54,20 +54,16 @@ export type DeviceCodeCallback = (info: { userCode: string; verificationUri: str
  */
 export async function oauthLogin(
 	provider: OAuthProviderId,
-	proxyUrl?: string,
+	_proxyUrl?: string,
 	onDeviceCode?: DeviceCodeCallback,
 ): Promise<OAuthCredentials> {
 	switch (provider) {
-		case "anthropic": {
-			if (!proxyUrl) throw new Error("Anthropic OAuth requires a CORS proxy");
-			return loginAnthropic(proxyUrl);
-		}
+		case "anthropic":
+			return loginAnthropic();
 		case "openai-codex":
 			return loginOpenAICodex();
-		case "github-copilot": {
-			if (!proxyUrl) throw new Error("GitHub Copilot OAuth requires a CORS proxy");
-			return loginGitHubCopilot(proxyUrl, onDeviceCode || (() => {}));
-		}
+		case "github-copilot":
+			return loginGitHubCopilot(onDeviceCode || (() => {}));
 		case "google-gemini-cli":
 			return loginGeminiCli();
 		default:
@@ -79,12 +75,10 @@ export async function oauthLogin(
  * Refresh OAuth credentials for a provider.
  * Returns updated credentials to store.
  */
-export async function oauthRefresh(credentials: OAuthCredentials, proxyUrl?: string): Promise<OAuthCredentials> {
+export async function oauthRefresh(credentials: OAuthCredentials, _proxyUrl?: string): Promise<OAuthCredentials> {
 	switch (credentials.providerId) {
-		case "anthropic": {
-			if (!proxyUrl) throw new Error("Anthropic OAuth token refresh requires a CORS proxy");
-			return refreshAnthropic(credentials, proxyUrl);
-		}
+		case "anthropic":
+			return refreshAnthropic(credentials);
 		case "openai-codex":
 			return refreshOpenAICodex(credentials);
 		case "github-copilot":

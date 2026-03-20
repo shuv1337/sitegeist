@@ -2,8 +2,8 @@
  * GitHub Copilot OAuth flow for browser extensions.
  *
  * Uses the device code flow (same as the CLI).
- * github.com endpoints need the CORS proxy.
- * api.github.com and copilot API endpoints have CORS enabled.
+ * CORS restrictions on github.com are handled by
+ * declarativeNetRequest rules in the manifest.
  */
 
 import type { OAuthCredentials } from "./types.js";
@@ -53,9 +53,8 @@ export function getGitHubCopilotBaseUrl(token?: string, enterpriseDomain?: strin
 	return "https://api.individual.githubcopilot.com";
 }
 
-async function proxyPost(url: string, body: string, headers: Record<string, string>, proxyUrl: string): Promise<any> {
-	const targetUrl = `${proxyUrl}/?url=${encodeURIComponent(url)}`;
-	const response = await fetch(targetUrl, {
+async function postJson(url: string, body: string, headers: Record<string, string>): Promise<any> {
+	const response = await fetch(url, {
 		method: "POST",
 		headers,
 		body,
@@ -67,9 +66,9 @@ async function proxyPost(url: string, body: string, headers: Record<string, stri
 	return response.json();
 }
 
-async function startDeviceFlow(domain: string, proxyUrl: string): Promise<DeviceCodeResponse> {
+async function startDeviceFlow(domain: string): Promise<DeviceCodeResponse> {
 	const urls = getUrls(domain);
-	const data = await proxyPost(
+	const data = await postJson(
 		urls.deviceCodeUrl,
 		new URLSearchParams({
 			client_id: CLIENT_ID,
@@ -80,7 +79,6 @@ async function startDeviceFlow(domain: string, proxyUrl: string): Promise<Device
 			"Content-Type": "application/x-www-form-urlencoded",
 			"User-Agent": "GitHubCopilotChat/0.35.0",
 		},
-		proxyUrl,
 	);
 
 	if (
@@ -101,7 +99,6 @@ async function pollForGitHubAccessToken(
 	deviceCode: string,
 	intervalSeconds: number,
 	expiresIn: number,
-	proxyUrl: string,
 ): Promise<string> {
 	const urls = getUrls(domain);
 	const deadline = Date.now() + expiresIn * 1000;
@@ -110,7 +107,7 @@ async function pollForGitHubAccessToken(
 	while (Date.now() < deadline) {
 		await new Promise((r) => setTimeout(r, intervalMs));
 
-		const data = await proxyPost(
+		const data = await postJson(
 			urls.accessTokenUrl,
 			new URLSearchParams({
 				client_id: CLIENT_ID,
@@ -122,7 +119,6 @@ async function pollForGitHubAccessToken(
 				"Content-Type": "application/x-www-form-urlencoded",
 				"User-Agent": "GitHubCopilotChat/0.35.0",
 			},
-			proxyUrl,
 		);
 
 		if (typeof data.access_token === "string") {
@@ -186,12 +182,11 @@ async function fetchCopilotToken(githubAccessToken: string, domain: string): Pro
  * The caller should display these to the user and open the verification URL.
  */
 export async function loginGitHubCopilot(
-	proxyUrl: string,
 	onDeviceCode: (info: { userCode: string; verificationUri: string }) => void,
 ): Promise<OAuthCredentials> {
 	const domain = "github.com";
 
-	const device = await startDeviceFlow(domain, proxyUrl);
+	const device = await startDeviceFlow(domain);
 
 	onDeviceCode({
 		userCode: device.user_code,
@@ -206,7 +201,6 @@ export async function loginGitHubCopilot(
 		device.device_code,
 		device.interval,
 		device.expires_in,
-		proxyUrl,
 	);
 
 	return fetchCopilotToken(githubAccessToken, domain);

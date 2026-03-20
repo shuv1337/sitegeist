@@ -1,0 +1,87 @@
+[
+	{
+		"id": 1,
+		"priority": 1,
+		"action": {
+			"type": "modifyHeaders",
+			"responseHeaders": [
+				{ "header": "Access-Control-Allow-Origin", "operation": "set", "value": "*" },
+				{ "header": "Access-Control-Allow-Methods", "operation": "set", "value": "GET, POST, OPTIONS" },
+				{ "header": "Access-Control-Allow-Headers", "operation": "set", "value": "*" },
+				{ "header": "Access-Control-Max-Age", "operation": "set", "value": "86400" }
+			]
+		},
+		"condition": {
+			"urlFilter": "||auth.openai.com",
+			"resourceTypes": ["xmlhttprequest", "other"]
+		}
+	},
+	{
+		"id": 2,
+		"priority": 1,
+		"action": {
+			"type": "modifyHeaders",
+			"responseHeaders": [
+				{ "header": "Access-Control-Allow-Origin", "operation": "set", "value": "*" },
+				{ "header": "Access-Control-Allow-Methods", "operation": "set", "value": "GET, POST, OPTIONS" },
+				{ "header": "Access-Control-Allow-Headers", "operation": "set", "value": "*" },
+				{ "header": "Access-Control-Max-Age", "operation": "set", "value": "86400" }
+			]
+		},
+		"condition": {
+			"urlFilter": "||platform.claude.com",
+			"resourceTypes": ["xmlhttprequest", "other"]
+		}
+	},
+	{
+		"id": 3,
+		"priority": 1,
+		"action": {
+			"type": "modifyHeaders",
+			"responseHeaders": [
+				{ "header": "Access-Control-Allow-Origin", "operation": "set", "value": "*" },
+				{ "header": "Access-Control-Allow-Methods", "operation": "set", "value": "GET, POST, OPTIONS" },
+				{ "header": "Access-Control-Allow-Headers", "operation": "set", "value": "*" },
+				{ "header": "Access-Control-Max-Age", "operation": "set", "value": "86400" }
+			]
+		},
+		"condition": {
+			"urlFilter": "||api.anthropic.com",
+			"resourceTypes": ["xmlhttprequest", "other"]
+		}
+	},
+	{
+		"id": 4,
+		"priority": 1,
+		"action": {
+			"type": "modifyHeaders",
+			"responseHeaders": [
+				{ "header": "Access-Control-Allow-Origin", "operation": "set", "value": "*" },
+				{ "header": "Access-Control-Allow-Methods", "operation": "set", "value": "GET, POST, OPTIONS" },
+				{ "header": "Access-Control-Allow-Headers", "operation": "set", "value": "*" },
+				{ "header": "Access-Control-Max-Age", "operation": "set", "value": "86400" }
+			]
+		},
+		"condition": {
+			"urlFilter": "||github.com/login/",
+			"resourceTypes": ["xmlhttprequest", "other"]
+		}
+	},
+	{
+		"id": 5,
+		"priority": 1,
+		"action": {
+			"type": "modifyHeaders",
+			"responseHeaders": [
+				{ "header": "Access-Control-Allow-Origin", "operation": "set", "value": "*" },
+				{ "header": "Access-Control-Allow-Methods", "operation": "set", "value": "GET, POST, OPTIONS" },
+				{ "header": "Access-Control-Allow-Headers", "operation": "set", "value": "*" },
+				{ "header": "Access-Control-Max-Age", "operation": "set", "value": "86400" }
+			]
+		},
+		"condition": {
+			"urlFilter": "||api.z.ai",
+			"resourceTypes": ["xmlhttprequest", "other"]
+		}
+	}
+]

@@ -14,9 +14,6 @@ import {
 // ProviderKeyInput custom element is registered via pi-web-ui main export
 import "@mariozechner/pi-web-ui";
 
-// Providers where OAuth needs the CORS proxy
-const PROXY_REQUIRED_PROVIDERS = new Set(["anthropic", "openai-codex", "github-copilot"]);
-
 /**
  * Prompt dialog shown when trying to use a provider with no key.
  * Shows both OAuth login (if available) and API key entry.
@@ -28,8 +25,6 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 	private oauthStatus: "idle" | "logging-in" | "error" = "idle";
 	private oauthError = "";
 	private deviceCode: string | null = null;
-	private proxyEnabled = false;
-	private proxyUrl = "";
 
 	protected modalWidth = "min(500px, 90vw)";
 	protected modalHeight = "auto";
@@ -37,11 +32,6 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 	static async prompt(provider: string): Promise<boolean> {
 		const dialog = new ApiKeyOrOAuthDialog();
 		dialog.provider = provider;
-
-		const storage = getAppStorage();
-		dialog.proxyEnabled = (await storage.settings.get<boolean>("proxy.enabled")) || false;
-		dialog.proxyUrl = (await storage.settings.get<string>("proxy.url")) || "";
-
 		dialog.open();
 
 		return new Promise((resolve) => {
@@ -76,14 +66,6 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 		}
 	}
 
-	private needsProxy(): boolean {
-		return PROXY_REQUIRED_PROVIDERS.has(this.provider);
-	}
-
-	private oauthDisabled(): boolean {
-		return this.needsProxy() && !this.proxyEnabled;
-	}
-
 	private async handleOAuthLogin() {
 		this.oauthStatus = "logging-in";
 		this.oauthError = "";
@@ -92,10 +74,8 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 
 		try {
 			const storage = getAppStorage();
-			const proxyEnabled = await storage.settings.get<boolean>("proxy.enabled");
-			const proxyUrl = proxyEnabled ? (await storage.settings.get<string>("proxy.url")) || undefined : undefined;
 
-			const credentials = await oauthLogin(this.provider as OAuthProviderId, proxyUrl, (info) => {
+			const credentials = await oauthLogin(this.provider as OAuthProviderId, undefined, (info) => {
 				this.deviceCode = info.userCode;
 				this.requestUpdate();
 			});
@@ -114,30 +94,6 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 		}
 	}
 
-	private renderProxyWarning() {
-		if (!isOAuthProvider(this.provider)) return "";
-
-		if (!this.needsProxy()) return "";
-
-		if (this.proxyEnabled) {
-			return html`
-				<div class="p-3 rounded-lg border border-orange-500/30 bg-orange-500/10">
-					<p class="text-xs text-muted-foreground">
-						Subscription requests routed through <strong class="text-foreground font-mono text-[10px]">${this.proxyUrl}</strong>.
-						Only use a proxy you trust.
-					</p>
-				</div>
-			`;
-		}
-
-		return html`
-			<div class="p-3 rounded-lg border border-destructive/50 bg-destructive/10">
-				<p class="text-xs text-destructive">
-					<strong>CORS proxy is disabled.</strong> Subscription login requires a proxy. Enable it in Settings > Proxy.
-				</p>
-			</div>
-		`;
-	}
 
 	protected renderContent() {
 		const supportsOAuth = isOAuthProvider(this.provider);
@@ -156,8 +112,6 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 							? html`
 							<div class="flex flex-col gap-3">
 								<h3 class="text-sm font-semibold text-foreground">Subscription Login</h3>
-
-								${this.renderProxyWarning()}
 
 								<div class="flex items-center justify-between p-3 rounded-lg border border-border bg-card">
 									<div class="flex-1">
@@ -179,7 +133,7 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 									${Button({
 										variant: "default",
 										size: "sm",
-										disabled: this.oauthStatus === "logging-in" || this.oauthDisabled(),
+										disabled: this.oauthStatus === "logging-in",
 										loading: this.oauthStatus === "logging-in",
 										onClick: () => this.handleOAuthLogin(),
 										children: "Login",

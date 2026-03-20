@@ -36,7 +36,8 @@
 		"sidePanel",
 		"userScripts",
 		"webNavigation",
-		"debugger"
+		"debugger",
+		"declarativeNetRequest"
 	],
 	"host_permissions": [
 		"http://*/*",
@@ -44,6 +45,15 @@
 		"http://localhost/*",
 		"http://127.0.0.1/*"
 	],
+	"declarative_net_request": {
+		"rule_resources": [
+			{
+				"id": "cors_rules",
+				"enabled": true,
+				"path": "cors-rules.json"
+			}
+		]
+	},
 	"sandbox": {
 		"pages": ["sandbox.html"]
 	},

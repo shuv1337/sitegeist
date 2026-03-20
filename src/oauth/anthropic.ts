@@ -3,8 +3,8 @@
  *
  * Uses the same client ID and endpoints as the CLI,
  * but replaces the local HTTP callback server with tab URL watching.
- * Token exchange and refresh go through the CORS proxy since
- * platform.claude.com does not allow cross-origin requests.
+ * CORS restrictions on platform.claude.com are handled by
+ * declarativeNetRequest rules in the manifest.
  */
 
 import { generatePKCE, postTokenRequest, waitForOAuthRedirect } from "./browser-oauth.js";
@@ -22,9 +22,8 @@ const SCOPES =
 /**
  * Run the Anthropic OAuth login flow in the browser.
  * Opens a tab for the user to authenticate, watches for the redirect.
- * Token exchange goes through the CORS proxy.
  */
-export async function loginAnthropic(proxyUrl: string): Promise<OAuthCredentials> {
+export async function loginAnthropic(): Promise<OAuthCredentials> {
 	const { verifier, challenge } = await generatePKCE();
 
 	const authParams = new URLSearchParams({
@@ -47,19 +46,14 @@ export async function loginAnthropic(proxyUrl: string): Promise<OAuthCredentials
 	if (!state) throw new Error("Missing state in redirect");
 	if (state !== verifier) throw new Error("OAuth state mismatch");
 
-	// Token endpoint requires proxy (no CORS)
-	const tokenData = await postTokenRequest(
-		TOKEN_URL,
-		{
-			grant_type: "authorization_code",
-			client_id: CLIENT_ID,
-			code,
-			state,
-			redirect_uri: REDIRECT_URI,
-			code_verifier: verifier,
-		},
-		proxyUrl,
-	);
+	const tokenData = await postTokenRequest(TOKEN_URL, {
+		grant_type: "authorization_code",
+		client_id: CLIENT_ID,
+		code,
+		state,
+		redirect_uri: REDIRECT_URI,
+		code_verifier: verifier,
+	});
 
 	const access = tokenData.access_token as string;
 	const refresh = tokenData.refresh_token as string;
@@ -78,18 +72,14 @@ export async function loginAnthropic(proxyUrl: string): Promise<OAuthCredentials
 }
 
 /**
- * Refresh an Anthropic OAuth token. Requires proxy.
+ * Refresh an Anthropic OAuth token.
  */
-export async function refreshAnthropic(credentials: OAuthCredentials, proxyUrl: string): Promise<OAuthCredentials> {
-	const tokenData = await postTokenRequest(
-		TOKEN_URL,
-		{
-			grant_type: "refresh_token",
-			client_id: CLIENT_ID,
-			refresh_token: credentials.refresh,
-		},
-		proxyUrl,
-	);
+export async function refreshAnthropic(credentials: OAuthCredentials): Promise<OAuthCredentials> {
+	const tokenData = await postTokenRequest(TOKEN_URL, {
+		grant_type: "refresh_token",
+		client_id: CLIENT_ID,
+		refresh_token: credentials.refresh,
+	});
 
 	const access = tokenData.access_token as string;
 	const refresh = tokenData.refresh_token as string;
