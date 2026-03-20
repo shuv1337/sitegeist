@@ -25,6 +25,7 @@ import {
 	type BridgeServerConfig,
 	type BridgeServerStatus,
 	ErrorCodes,
+	isWriteMethod,
 	type RegistrationMessage,
 } from "./protocol.js";
 
@@ -69,6 +70,8 @@ export class BridgeServer {
 	private activeExtension: ClientInfo | null = null;
 	private readonly pendingRequests = new Map<number, PendingRequest>();
 	private nextRelayRequestId = 1;
+	private writerCliConnectionId?: string;
+	private writerSessionId?: string;
 
 	constructor(config: BridgeServerConfig) {
 		this.config = config;
@@ -254,21 +257,34 @@ export class BridgeServer {
 		}
 
 		if (msg.role === "extension") {
-			// Enforce single active extension target
+			// Handle existing extension connection
 			if (this.activeExtension && this.activeExtension.ws.readyState === WebSocket.OPEN) {
-				bridgeLog("warn", "extension already connected — rejecting new registration", {
-					...fields,
-					outcome: "rejected",
-					existingWindowId: this.activeExtension.windowId,
-					newWindowId: msg.windowId,
-				});
-				this.sendJson(client.ws, {
-					type: "register_result",
-					ok: false,
-					error: "Another extension target is already connected",
-				});
-				client.ws.close(4007, "Extension already connected");
-				return;
+				if (this.activeExtension.windowId === msg.windowId) {
+					// Same window reconnecting (sidepanel reload, settings change, etc.)
+					// — replace the old connection gracefully
+					bridgeLog("info", "replacing existing extension connection (same windowId)", {
+						...fields,
+						windowId: msg.windowId,
+					});
+					const oldWs = this.activeExtension.ws;
+					this.clients.delete(oldWs);
+					oldWs.close(4008, "Replaced by new connection from same window");
+				} else {
+					// Different window — reject (single active target constraint)
+					bridgeLog("warn", "extension already connected — rejecting new registration", {
+						...fields,
+						outcome: "rejected",
+						existingWindowId: this.activeExtension.windowId,
+						newWindowId: msg.windowId,
+					});
+					this.sendJson(client.ws, {
+						type: "register_result",
+						ok: false,
+						error: "Another extension target is already connected",
+					});
+					client.ws.close(4007, "Extension already connected");
+					return;
+				}
 			}
 
 			client.role = "extension";
@@ -353,6 +369,34 @@ export class BridgeServer {
 			return;
 		}
 
+		if (isWriteMethod(req.method)) {
+			if (this.writerCliConnectionId && this.writerCliConnectionId !== client.connectionId) {
+				bridgeLog("warn", "session inject rejected due to active writer lock", {
+					...fields,
+					outcome: "rejected",
+					writerCliConnectionId: this.writerCliConnectionId,
+					writerSessionId: this.writerSessionId,
+				});
+				this.sendJson(client.ws, {
+					id: req.id,
+					error: {
+						code: ErrorCodes.WRITE_LOCKED,
+						message: "Another CLI currently holds the session write lock",
+					},
+				});
+				return;
+			}
+			this.writerCliConnectionId = client.connectionId;
+			const expectedSessionId =
+				req.params && typeof req.params.expectedSessionId === "string" ? req.params.expectedSessionId : undefined;
+			this.writerSessionId = expectedSessionId;
+			bridgeLog("info", "session writer lease acquired", {
+				...fields,
+				sessionId: expectedSessionId,
+				outcome: "success",
+			});
+		}
+
 		const relayRequestId = this.nextRelayRequestId++;
 		this.pendingRequests.set(relayRequestId, {
 			relayRequestId,
@@ -420,6 +464,20 @@ export class BridgeServer {
 			role: "server",
 			event: event.event,
 		} as LogFields);
+		if (event.event === "session_changed") {
+			const sessionId =
+				event.data && typeof event.data.sessionId === "string" ? (event.data.sessionId as string) : undefined;
+			if (this.writerSessionId && this.writerSessionId !== sessionId) {
+				bridgeLog("info", "releasing session writer lease due to session change", {
+					role: "server",
+					writerCliConnectionId: this.writerCliConnectionId,
+					writerSessionId: this.writerSessionId,
+					sessionId,
+				});
+				this.writerCliConnectionId = undefined;
+				this.writerSessionId = undefined;
+			}
+		}
 		this.broadcastToRole("cli", event);
 	}
 
@@ -438,6 +496,8 @@ export class BridgeServer {
 
 		if (client.role === "extension" && this.activeExtension === client) {
 			this.activeExtension = null;
+			this.writerCliConnectionId = undefined;
+			this.writerSessionId = undefined;
 			bridgeLog("info", "extension disconnected", { ...fields, windowId: client.windowId });
 
 			for (const pending of this.pendingRequests.values()) {
@@ -459,6 +519,14 @@ export class BridgeServer {
 				event: "extension_disconnected",
 			});
 		} else if (client.role === "cli") {
+			if (this.writerCliConnectionId === client.connectionId) {
+				bridgeLog("info", "releasing session writer lease due to cli disconnect", {
+					...fields,
+					sessionId: this.writerSessionId,
+				});
+				this.writerCliConnectionId = undefined;
+				this.writerSessionId = undefined;
+			}
 			bridgeLog("info", "cli disconnected", { ...fields, name: client.name });
 
 			for (const [relayRequestId, pending] of this.pendingRequests) {

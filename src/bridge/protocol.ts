@@ -17,11 +17,17 @@ export const BridgeCapabilities = [
 	"eval",
 	"select_element",
 	"status",
+	"session_history",
+	"session_inject",
 ] as const;
 export type BridgeCapability = (typeof BridgeCapabilities)[number];
 
 export function getBridgeCapabilities(debuggerEnabled: boolean): BridgeCapability[] {
 	return BridgeCapabilities.filter((capability) => debuggerEnabled || capability !== "eval");
+}
+
+export function isWriteMethod(method: BridgeMethod): boolean {
+	return method === "session_inject";
 }
 
 // ---------------------------------------------------------------------------
@@ -56,7 +62,16 @@ export interface RegisterResult {
 // Requests / Responses
 // ---------------------------------------------------------------------------
 
-export const BridgeMethods = ["status", "navigate", "repl", "screenshot", "eval", "select_element"] as const;
+export const BridgeMethods = [
+	"status",
+	"navigate",
+	"repl",
+	"screenshot",
+	"eval",
+	"select_element",
+	"session_history",
+	"session_inject",
+] as const;
 export type BridgeMethod = (typeof BridgeMethods)[number];
 
 export interface BridgeRequest {
@@ -80,7 +95,14 @@ export interface BridgeResponse {
 // Events
 // ---------------------------------------------------------------------------
 
-export type BridgeEventType = "extension_connected" | "extension_disconnected" | "active_tab_changed";
+export type BridgeEventType =
+	| "extension_connected"
+	| "extension_disconnected"
+	| "active_tab_changed"
+	| "session_changed"
+	| "session_message"
+	| "session_tool"
+	| "session_run_state";
 
 export interface BridgeEvent {
 	type: "event";
@@ -137,6 +159,18 @@ export interface SelectElementParams {
 	message?: string;
 }
 
+export interface SessionHistoryParams {
+	last?: number;
+	afterMessageIndex?: number;
+}
+
+export interface SessionInjectParams {
+	expectedSessionId: string;
+	role: "user" | "assistant";
+	content: string;
+	waitForIdle?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // Bridge result types
 // ---------------------------------------------------------------------------
@@ -190,6 +224,72 @@ export interface BridgeServerStatus {
 	pendingRequests: number;
 }
 
+export interface SessionWireAttachment {
+	kind: "image" | "file";
+	mimeType?: string;
+	name?: string;
+}
+
+export interface SessionWireMessage {
+	messageIndex: number;
+	role: "user" | "assistant" | "toolResult" | "navigation";
+	text: string;
+	timestamp?: number;
+	provider?: string;
+	model?: string;
+	toolCalls?: { name: string; argsSummary: string }[];
+	toolName?: string;
+	toolCallId?: string;
+	isError?: boolean;
+	attachments?: SessionWireAttachment[];
+}
+
+export interface SessionHistoryResult {
+	sessionId?: string;
+	persisted: boolean;
+	title: string;
+	model?: { provider: string; id: string };
+	isStreaming: boolean;
+	messageCount: number;
+	lastMessageIndex: number;
+	messages: SessionWireMessage[];
+}
+
+export interface SessionInjectResult {
+	ok: true;
+	sessionId: string;
+	messageIndex: number;
+}
+
+export interface SessionChangedEventData {
+	sessionId?: string;
+	persisted: boolean;
+	title: string;
+	model?: { provider: string; id: string };
+	messageCount: number;
+	lastMessageIndex: number;
+}
+
+export interface SessionMessageEventData {
+	sessionId?: string;
+	persisted: boolean;
+	message: SessionWireMessage;
+}
+
+export interface SessionToolEventData {
+	sessionId?: string;
+	phase: "start" | "update" | "end";
+	toolCallId: string;
+	toolName: string;
+	isError?: boolean;
+	summary?: string;
+}
+
+export interface SessionRunStateEventData {
+	sessionId?: string;
+	state: "started" | "idle";
+}
+
 // ---------------------------------------------------------------------------
 // Network / config types
 // ---------------------------------------------------------------------------
@@ -236,6 +336,14 @@ export const ErrorCodes = {
 	EXTENSION_ALREADY_CONNECTED: -32007,
 	/** Capability exists in protocol but is disabled by local settings. */
 	CAPABILITY_DISABLED: -32008,
+	/** Requested operation cannot modify the currently active session while streaming. */
+	SESSION_BUSY: -32009,
+	/** CLI attempted to write to a session that is no longer active. */
+	SESSION_MISMATCH: -32010,
+	/** There is no active persisted sidepanel session for write operations. */
+	NO_ACTIVE_SESSION: -32011,
+	/** Another CLI currently holds the write lease for session injection. */
+	WRITE_LOCKED: -32012,
 } as const;
 
 // ---------------------------------------------------------------------------

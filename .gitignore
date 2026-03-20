@@ -12,3 +12,5 @@ sitegeist-latest.zip
 *.screenflow/
 *.mp4
 version.json
+.pi/suggester/
+PLAN-*.md

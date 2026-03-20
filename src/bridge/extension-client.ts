@@ -10,6 +10,7 @@ import { BrowserCommandExecutor } from "./browser-command-executor.js";
 import { bridgeLog, type LogFields } from "./logging.js";
 import type { AbortMessage, BridgeRequest, BridgeResponse, RegisterResult } from "./protocol.js";
 import { ErrorCodes, getBridgeCapabilities } from "./protocol.js";
+import type { SessionBridgeAdapter } from "./session-bridge.js";
 
 export type BridgeConnectionState = "disabled" | "disconnected" | "connecting" | "connected" | "error";
 
@@ -19,6 +20,7 @@ export interface BridgeClientOptions {
 	windowId: number;
 	sessionId?: string;
 	debuggerEnabled: boolean;
+	sessionBridge?: SessionBridgeAdapter;
 	onStateChange?: (state: BridgeConnectionState, detail?: string) => void;
 }
 
@@ -63,6 +65,7 @@ export class BridgeClient {
 			windowId: options.windowId,
 			sessionId: options.sessionId,
 			debuggerEnabled: options.debuggerEnabled,
+			sessionBridge: options.sessionBridge,
 		});
 		this.reconnectAttempts = 0;
 		this.doConnect();

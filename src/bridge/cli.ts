@@ -27,6 +27,7 @@ import { parseArgs } from "node:util";
 import { WebSocket } from "ws";
 import {
 	BridgeDefaults,
+	type BridgeEvent,
 	type BridgeMethod,
 	type BridgeReplResult,
 	type BridgeRequest,
@@ -36,6 +37,7 @@ import {
 	type CliConfigFile,
 	ErrorCodes,
 	type RegisterResult,
+	type SessionHistoryResult,
 } from "./protocol.js";
 import { BridgeServer } from "./server.js";
 
@@ -225,6 +227,35 @@ function printResult(response: BridgeResponse, jsonMode: boolean): void {
 	else console.log(JSON.stringify(result, null, 2));
 }
 
+function printSessionHistory(result: SessionHistoryResult, jsonMode: boolean): void {
+	if (jsonMode) {
+		console.log(JSON.stringify(result, null, 2));
+		return;
+	}
+	console.log(`Session: ${result.title || "(untitled)"}`);
+	console.log(`Persisted: ${result.persisted ? "yes" : "no"}`);
+	console.log(`Session ID: ${result.sessionId ?? "(none)"}`);
+	if (result.model) {
+		console.log(`Model: ${result.model.provider}/${result.model.id}`);
+	}
+	console.log(`Streaming: ${result.isStreaming ? "yes" : "no"}`);
+	console.log(`Messages: ${result.messageCount}`);
+	if (result.messages.length > 0) {
+		console.log("");
+		for (const message of result.messages) {
+			console.log(`[${message.messageIndex}] ${message.role}: ${message.text}`);
+		}
+	}
+}
+
+function printFollowEvent(event: BridgeEvent, jsonMode: boolean): void {
+	if (jsonMode) {
+		console.log(JSON.stringify(event));
+		return;
+	}
+	console.log(`event:${event.event} ${JSON.stringify(event.data || {})}`);
+}
+
 function exitCodeForResponse(response: BridgeResponse): number {
 	if (!response.error) return 0;
 	if (response.error.code === ErrorCodes.NO_EXTENSION_TARGET) return 2;
@@ -289,22 +320,22 @@ async function cmdServe(args: string[]): Promise<void> {
 		allowPositionals: false,
 	});
 
-	const token = values.token || "";
+	// Resolve token: flag > env > config file > auto-generate and persist
+	let token = values.token || "";
 	if (!token) {
-		const generated = generateToken();
-		console.log("No token provided. Generated token: " + generated);
-		console.log("Save it to " + getConfigPath() + ' or pass --token="' + generated + '"');
-		console.log("");
+		const existing = readConfigFile();
+		token = existing.token || "";
+	}
+	if (!token) {
+		token = generateToken();
 		const configDir = join(homedir(), ".shuvgeist");
 		mkdirSync(configDir, { recursive: true });
 		const configPath = getConfigPath();
 		const existing = readConfigFile();
-		existing.token = generated;
+		existing.token = token;
 		writeFileSync(configPath, JSON.stringify(existing, null, 2) + "\n");
-		console.log("Token saved to " + configPath);
+		console.log("Generated token and saved to " + configPath);
 		console.log("");
-		new BridgeServer({ host: values.host!, port: Number.parseInt(values.port!, 10), token: generated }).start();
-		return;
 	}
 
 	new BridgeServer({ host: values.host!, port: Number.parseInt(values.port!, 10), token }).start();
@@ -428,6 +459,134 @@ async function cmdRepl(
 	}
 }
 
+async function cmdSession(flags: {
+	url?: string;
+	host?: string;
+	port?: string;
+	token?: string;
+	json?: boolean;
+	last?: string;
+	follow?: boolean;
+	timeout?: string;
+}): Promise<void> {
+	const jsonMode = flags.json || false;
+	const params: Record<string, unknown> = {};
+	if (flags.last) params.last = Number.parseInt(flags.last, 10);
+
+	if (!flags.follow) {
+		try {
+			const response = await cmdOneShot("session_history", params, flags, BridgeDefaults.REQUEST_TIMEOUT_MS);
+			if (response.error) {
+				printResult(response, jsonMode);
+				process.exit(exitCodeForResponse(response));
+			}
+			printSessionHistory(response.result as SessionHistoryResult, jsonMode);
+			process.exit(0);
+		} catch (err) {
+			printError(err instanceof Error ? err.message : String(err), jsonMode);
+			process.exit(isNetworkOrConfigError(err) ? 3 : 1);
+		}
+	}
+
+	const { url, token } = resolveConfig(flags);
+	let lastSeen = -1;
+	const initialRequest: BridgeRequest = { id: generateRequestId(), method: "session_history", params };
+	const ws = new WebSocket(url);
+
+	ws.on("open", () => {
+		ws.send(JSON.stringify({ type: "register", role: "cli", token, name: "shuvgeist-cli-follow" }));
+	});
+
+	ws.on("message", (data: Buffer | string) => {
+		const msg = JSON.parse(typeof data === "string" ? data : data.toString("utf-8"));
+		if (msg.type === "register_result") {
+			const reg = msg as RegisterResult;
+			if (!reg.ok) {
+				printError("Registration failed: " + (reg.error || "unknown"), jsonMode);
+				process.exit(3);
+			}
+			ws.send(JSON.stringify(initialRequest));
+			return;
+		}
+		if (msg.id === initialRequest.id) {
+			const response = msg as BridgeResponse;
+			if (response.error) {
+				printResult(response, jsonMode);
+				process.exit(exitCodeForResponse(response));
+			}
+			const result = response.result as SessionHistoryResult;
+			printSessionHistory(result, jsonMode);
+			lastSeen = result.lastMessageIndex;
+			return;
+		}
+		if (msg.type === "event") {
+			const event = msg as BridgeEvent;
+			if (event.event === "session_message") {
+				const maybeIndex = (event.data as { message?: { messageIndex?: number } } | undefined)?.message
+					?.messageIndex;
+				if (typeof maybeIndex === "number") lastSeen = Math.max(lastSeen, maybeIndex);
+			}
+			printFollowEvent(event, jsonMode);
+		}
+	});
+
+	ws.on("error", (err) => {
+		printError(err instanceof Error ? err.message : String(err), jsonMode);
+		process.exit(3);
+	});
+
+	ws.on("close", () => {
+		process.exit(0);
+	});
+}
+
+async function cmdInject(
+	text: string,
+	flags: {
+		url?: string;
+		host?: string;
+		port?: string;
+		token?: string;
+		json?: boolean;
+		role?: string;
+		timeout?: string;
+	},
+): Promise<void> {
+	const jsonMode = flags.json || false;
+	try {
+		const historyResponse = await cmdOneShot("session_history", {}, flags, BridgeDefaults.REQUEST_TIMEOUT_MS);
+		if (historyResponse.error) {
+			printResult(historyResponse, jsonMode);
+			process.exit(exitCodeForResponse(historyResponse));
+		}
+		const history = historyResponse.result as SessionHistoryResult;
+		if (!history.sessionId) {
+			printError("No active persisted session", jsonMode);
+			process.exit(1);
+		}
+		const response = await cmdOneShot(
+			"session_inject",
+			{
+				expectedSessionId: history.sessionId,
+				role: flags.role === "assistant" ? "assistant" : "user",
+				content: text,
+				waitForIdle: true,
+			},
+			flags,
+			BridgeDefaults.REQUEST_TIMEOUT_MS,
+		);
+		if (response.error) {
+			printResult(response, jsonMode);
+			process.exit(exitCodeForResponse(response));
+		}
+		printResult(response, jsonMode);
+		process.exit(0);
+	} catch (err) {
+		printError(err instanceof Error ? err.message : String(err), jsonMode);
+		process.exit(isNetworkOrConfigError(err) ? 3 : 1);
+	}
+}
+
 function generateToken(): string {
 	const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
 	let result = "";
@@ -451,6 +610,8 @@ Usage:
   shuvgeist screenshot [--out file.png] [--max-width N] [--json] [--timeout 120s]
   shuvgeist eval <code> [--json] [--timeout 120s]
   shuvgeist select <message> [--json] [--timeout none]
+  shuvgeist session [--last N] [--json] [--follow]
+  shuvgeist inject <text> [--role user|assistant] [--json]
 
 Global options:
   --url <ws://...>    Bridge server URL
@@ -496,6 +657,9 @@ async function main(): Promise<void> {
 		else if (arg === "--out" && i + 1 < rest.length) globalFlags.out = rest[++i];
 		else if (arg === "--max-width" && i + 1 < rest.length) globalFlags.maxWidth = rest[++i];
 		else if (arg === "--write-files" && i + 1 < rest.length) globalFlags.writeFiles = rest[++i];
+		else if (arg === "--last" && i + 1 < rest.length) globalFlags.last = rest[++i];
+		else if (arg === "--role" && i + 1 < rest.length) globalFlags.role = rest[++i];
+		else if (arg === "--follow") globalFlags.follow = true;
 		else if (arg === "-f" && i + 1 < rest.length) globalFlags.file = rest[++i];
 		else positionals.push(arg);
 		i++;

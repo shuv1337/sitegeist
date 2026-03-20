@@ -23,13 +23,19 @@ import type {
 	ReplParams,
 	ScreenshotParams,
 	SelectElementParams,
+	SessionHistoryParams,
+	SessionHistoryResult,
+	SessionInjectParams,
+	SessionInjectResult,
 } from "./protocol.js";
 import { ErrorCodes, getBridgeCapabilities } from "./protocol.js";
+import { buildSessionHistoryResult, type SessionBridgeAdapter } from "./session-bridge.js";
 
 export interface BrowserCommandExecutorOptions {
 	windowId: number;
 	sessionId?: string;
 	debuggerEnabled: boolean;
+	sessionBridge?: SessionBridgeAdapter;
 }
 
 export class BrowserCommandExecutor {
@@ -41,11 +47,13 @@ export class BrowserCommandExecutor {
 	private readonly windowId: number;
 	private readonly sessionId?: string;
 	private readonly debuggerEnabled: boolean;
+	private readonly sessionBridge?: SessionBridgeAdapter;
 
 	constructor(options: BrowserCommandExecutorOptions) {
 		this.windowId = options.windowId;
 		this.sessionId = options.sessionId;
 		this.debuggerEnabled = options.debuggerEnabled;
+		this.sessionBridge = options.sessionBridge;
 
 		this.navigateTool = new NavigateTool();
 		this.selectElementTool = new AskUserWhichElementTool();
@@ -87,6 +95,10 @@ export class BrowserCommandExecutor {
 				return this.evalCode(params as unknown as EvalParams, signal);
 			case "select_element":
 				return this.selectElement((params ?? {}) as SelectElementParams, signal);
+			case "session_history":
+				return this.sessionHistory((params ?? {}) as SessionHistoryParams);
+			case "session_inject":
+				return this.sessionInject(params as unknown as SessionInjectParams, signal);
 			default:
 				throw new Error("Unknown method: " + method);
 		}
@@ -153,5 +165,24 @@ export class BrowserCommandExecutor {
 	async selectElement(params: SelectElementParams, signal?: AbortSignal): Promise<unknown> {
 		const result = await this.selectElementTool.execute("bridge", { message: params.message ?? "" }, signal);
 		return result.details;
+	}
+
+	async sessionHistory(params: SessionHistoryParams): Promise<SessionHistoryResult> {
+		if (!this.sessionBridge) {
+			throw new Error("Session bridge is not available");
+		}
+		return buildSessionHistoryResult(this.sessionBridge.getSnapshot(), params);
+	}
+
+	async sessionInject(params: SessionInjectParams, signal?: AbortSignal): Promise<SessionInjectResult> {
+		if (!this.sessionBridge) {
+			throw new Error("Session bridge is not available");
+		}
+		if (signal?.aborted) {
+			const error = new Error("Session injection aborted");
+			(error as Error & { code?: number }).code = ErrorCodes.ABORTED;
+			throw error;
+		}
+		return this.sessionBridge.appendInjectedMessage(params);
 	}
 }

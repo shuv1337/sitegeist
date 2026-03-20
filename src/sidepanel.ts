@@ -23,6 +23,16 @@ import {
 import { html, render } from "lit";
 import { History, Plus, Settings } from "lucide";
 import { BridgeClient } from "./bridge/extension-client.js";
+import { bridgeLog } from "./bridge/logging.js";
+import { ErrorCodes, type SessionInjectParams } from "./bridge/protocol.js";
+import {
+	projectSessionMessage,
+	projectSessionMessages,
+	type SessionBridgeAdapter,
+	type SessionBridgeEventEnvelope,
+	type SessionSnapshot,
+	summarizeForBridge,
+} from "./bridge/session-bridge.js";
 import { AboutTab } from "./dialogs/AboutTab.js";
 import { ApiKeyOrOAuthDialog } from "./dialogs/ApiKeyOrOAuthDialog.js";
 import { ApiKeysOAuthTab } from "./dialogs/ApiKeysOAuthTab.js";
@@ -113,6 +123,7 @@ const syncBridgeConnection = async () => {
 			windowId: currentWindowId,
 			sessionId: currentSessionId,
 			debuggerEnabled,
+			sessionBridge: sessionBridgeAdapter,
 			onStateChange: (state, detail) => {
 				setBridgeStateForTab(state, detail);
 				renderApp();
@@ -135,6 +146,7 @@ const recordedCostMessages = new Set<AgentMessage>();
 
 // Bridge client for CLI-to-extension communication
 const bridgeClient = new BridgeClient();
+const sessionBridgeListeners = new Set<(event: SessionBridgeEventEnvelope) => void>();
 
 // Cached auth type label for the current provider
 let authLabel = "";
@@ -285,8 +297,8 @@ export function getShownSkills(): Map<string, string> {
 // HELPERS
 // ============================================================================
 const generateTitle = (messages: AgentMessage[]): string => {
-	const firstUserMsg = messages.find((m) => m.role === "user");
-	if (!firstUserMsg || firstUserMsg.role !== "user") return "";
+	const firstUserMsg = messages.find((m) => m.role === "user" || m.role === "user-with-attachments");
+	if (!firstUserMsg || (firstUserMsg.role !== "user" && firstUserMsg.role !== "user-with-attachments")) return "";
 
 	let text = "";
 	const content = firstUserMsg.content;
@@ -309,13 +321,13 @@ const generateTitle = (messages: AgentMessage[]): string => {
 };
 
 const shouldSaveSession = (messages: AgentMessage[]): boolean => {
-	const hasUserMsg = messages.some((m: AgentMessage) => m.role === "user");
+	const hasUserMsg = messages.some((m: AgentMessage) => m.role === "user" || m.role === "user-with-attachments");
 	const hasAssistantMsg = messages.some((m: AgentMessage) => m.role === "assistant");
 	return hasUserMsg && hasAssistantMsg;
 };
 
 const saveSession = async () => {
-	if (!storage.sessions || !currentSessionId || !agent || !currentTitle) return;
+	if (!storage.sessions || !currentSessionId || !agent) return;
 
 	const state = agent.state;
 	if (!shouldSaveSession(state.messages)) return;
@@ -397,6 +409,138 @@ const updateUrl = (sessionId: string) => {
 	const url = new URL(window.location.href);
 	url.searchParams.set("session", sessionId);
 	window.history.replaceState({}, "", url);
+};
+
+const emitSessionBridgeEvent = (event: SessionBridgeEventEnvelope) => {
+	for (const listener of sessionBridgeListeners) {
+		listener(event);
+	}
+};
+
+const currentSessionSnapshot = (): SessionSnapshot => {
+	const messages = agent?.state.messages || [];
+	const projectedMessages = projectSessionMessages(messages);
+	return {
+		sessionId: currentSessionId,
+		persisted: Boolean(currentSessionId),
+		title: currentTitle,
+		model: agent?.state.model ? { provider: agent.state.model.provider, id: agent.state.model.id } : undefined,
+		isStreaming: Boolean(agent?.state.isStreaming),
+		messageCount: messages.length,
+		lastMessageIndex: messages.length > 0 ? messages.length - 1 : -1,
+		messages: projectedMessages,
+	};
+};
+
+const emitSessionChanged = () => {
+	const snapshot = currentSessionSnapshot();
+	emitSessionBridgeEvent({
+		event: "session_changed",
+		data: {
+			sessionId: snapshot.sessionId,
+			persisted: snapshot.persisted,
+			title: snapshot.title,
+			model: snapshot.model,
+			messageCount: snapshot.messageCount,
+			lastMessageIndex: snapshot.lastMessageIndex,
+		},
+	});
+};
+
+const emitSessionMessage = (message: AgentMessage, messageIndex?: number) => {
+	const resolvedIndex = messageIndex ?? agent.state.messages.indexOf(message);
+	if (resolvedIndex < 0) return;
+	const projected = projectSessionMessage(message, resolvedIndex);
+	if (!projected) return;
+	const snapshot = currentSessionSnapshot();
+	emitSessionBridgeEvent({
+		event: "session_message",
+		data: {
+			sessionId: snapshot.sessionId,
+			persisted: snapshot.persisted,
+			message: projected,
+		},
+	});
+};
+
+const appendInjectedMessage = async (params: SessionInjectParams) => {
+	if (!currentSessionId) {
+		const error = new Error("No active persisted session");
+		(error as Error & { code?: number }).code = ErrorCodes.NO_ACTIVE_SESSION;
+		throw error;
+	}
+	if (params.expectedSessionId !== currentSessionId) {
+		const error = new Error("Active session changed");
+		(error as Error & { code?: number }).code = ErrorCodes.SESSION_MISMATCH;
+		throw error;
+	}
+	if (agent.state.isStreaming) {
+		if (params.waitForIdle === false) {
+			const error = new Error("Session is busy");
+			(error as Error & { code?: number }).code = ErrorCodes.SESSION_BUSY;
+			throw error;
+		}
+		const waitStartedAt = Date.now();
+		await agent.waitForIdle();
+		bridgeLog("info", "session injection waited for idle", {
+			role: "extension",
+			method: "session_inject",
+			sessionId: currentSessionId,
+			durationMs: Date.now() - waitStartedAt,
+			outcome: "success",
+		});
+	}
+
+	const timestamp = Date.now();
+	const message =
+		params.role === "assistant"
+			? {
+					role: "assistant" as const,
+					content: [{ type: "text" as const, text: params.content }],
+					api: agent.state.model.api,
+					provider: agent.state.model.provider,
+					model: agent.state.model.id,
+					usage: {
+						input: 0,
+						output: 0,
+						cacheRead: 0,
+						cacheWrite: 0,
+						totalTokens: 0,
+						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+					},
+					stopReason: "stop" as const,
+					timestamp,
+				}
+			: {
+					role: "user" as const,
+					content: params.content,
+					timestamp,
+				};
+
+	agent.appendMessage(message);
+	if (!currentTitle && shouldSaveSession(agent.state.messages)) {
+		currentTitle = generateTitle(agent.state.messages);
+	}
+	await saveSession();
+	renderApp();
+	const messageIndex = agent.state.messages.length - 1;
+	emitSessionMessage(message, messageIndex);
+	emitSessionChanged();
+	return {
+		ok: true as const,
+		sessionId: currentSessionId,
+		messageIndex,
+	};
+};
+
+const sessionBridgeAdapter: SessionBridgeAdapter = {
+	getSnapshot: currentSessionSnapshot,
+	waitForIdle: () => agent.waitForIdle(),
+	appendInjectedMessage,
+	subscribe(listener) {
+		sessionBridgeListeners.add(listener);
+		return () => sessionBridgeListeners.delete(listener);
+	},
 };
 
 const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true) => {
@@ -481,6 +625,52 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 		agentUnsubscribe = agent.subscribe((event: AgentEvent) => {
 			const messages = agent.state.messages;
 
+			if (event.type === "agent_start") {
+				emitSessionBridgeEvent({
+					event: "session_run_state",
+					data: { sessionId: currentSessionId, state: "started" },
+				});
+			}
+
+			if (event.type === "agent_end") {
+				emitSessionBridgeEvent({
+					event: "session_run_state",
+					data: { sessionId: currentSessionId, state: "idle" },
+				});
+			}
+
+			if (event.type === "message_end") {
+				emitSessionMessage(event.message);
+			}
+
+			if (
+				event.type === "tool_execution_start" ||
+				event.type === "tool_execution_update" ||
+				event.type === "tool_execution_end"
+			) {
+				emitSessionBridgeEvent({
+					event: "session_tool",
+					data: {
+						sessionId: currentSessionId,
+						phase:
+							event.type === "tool_execution_start"
+								? "start"
+								: event.type === "tool_execution_update"
+									? "update"
+									: "end",
+						toolCallId: event.toolCallId,
+						toolName: event.toolName,
+						isError: event.type === "tool_execution_end" ? event.isError : undefined,
+						summary:
+							event.type === "tool_execution_start"
+								? summarizeForBridge(event.args)
+								: event.type === "tool_execution_update"
+									? summarizeForBridge(event.partialResult)
+									: summarizeForBridge(event.result),
+					},
+				});
+			}
+
 			storage.settings
 				.set("lastUsedModel", agent.state.model)
 				.catch((err) => console.error("Failed to save lastUsedModel:", err));
@@ -503,6 +693,7 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 
 			if (!currentTitle && shouldSaveSession(messages)) {
 				currentTitle = generateTitle(messages);
+				emitSessionChanged();
 			}
 
 			if (!currentSessionId && shouldSaveSession(messages)) {
@@ -520,11 +711,16 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 						}
 					});
 				updateUrl(currentSessionId);
+				emitSessionChanged();
 				void syncBridgeConnection();
 			}
 
 			if (currentSessionId) {
 				saveSession();
+			}
+
+			if (event.type === "message_end" || event.type === "agent_end") {
+				emitSessionChanged();
 			}
 
 			renderApp();
@@ -550,6 +746,7 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 					agent.setModel(model);
 					chatPanel.agentInterface?.requestUpdate();
 					updateAuthLabel().catch(() => {});
+					emitSessionChanged();
 					renderApp();
 				},
 				providers,
@@ -583,6 +780,8 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 			if (!lastUrl || lastUrl !== tab.url) {
 				const navMessage = await createNavigationMessage(tab.url, tab.title || "Untitled", tab.favIconUrl, tab.id);
 				agent.appendMessage(navMessage);
+				emitSessionMessage(navMessage, agent.state.messages.length - 1);
+				emitSessionChanged();
 			}
 		},
 		onCostClick: () => {
@@ -737,6 +936,7 @@ const renderApp = () => {
 												if (newTitle && newTitle !== currentTitle && storage.sessions && currentSessionId) {
 													await storage.sessions.updateTitle(currentSessionId, newTitle);
 													currentTitle = newTitle;
+													emitSessionChanged();
 												}
 												isEditingTitle = false;
 												renderApp();
@@ -1116,6 +1316,7 @@ async function initApp() {
 			await syncBridgeConnection();
 			const metadata = await storage.sessions.getMetadata(sessionIdFromUrl);
 			currentTitle = metadata?.title || "";
+			emitSessionChanged();
 
 			await createAgent({
 				systemPrompt: SYSTEM_PROMPT,
@@ -1143,6 +1344,7 @@ async function initApp() {
 		agent.appendMessage(welcomeMessage);
 	}
 
+	emitSessionChanged();
 	renderApp();
 
 	// If no API keys configured, show welcome dialog, open settings, then auto-select model
