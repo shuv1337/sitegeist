@@ -19,6 +19,9 @@ export const BridgeCapabilities = [
 	"status",
 	"session_history",
 	"session_inject",
+	"session_new",
+	"session_set_model",
+	"session_artifacts",
 ] as const;
 export type BridgeCapability = (typeof BridgeCapabilities)[number];
 
@@ -27,7 +30,7 @@ export function getBridgeCapabilities(debuggerEnabled: boolean): BridgeCapabilit
 }
 
 export function isWriteMethod(method: BridgeMethod): boolean {
-	return method === "session_inject";
+	return method === "session_inject" || method === "session_new" || method === "session_set_model";
 }
 
 // ---------------------------------------------------------------------------
@@ -71,6 +74,9 @@ export const BridgeMethods = [
 	"select_element",
 	"session_history",
 	"session_inject",
+	"session_new",
+	"session_set_model",
+	"session_artifacts",
 ] as const;
 export type BridgeMethod = (typeof BridgeMethods)[number];
 
@@ -259,6 +265,41 @@ export interface SessionInjectResult {
 	ok: true;
 	sessionId: string;
 	messageIndex: number;
+}
+
+export interface SessionNewParams {
+	/** Optional model to set on the new session (provider/id format, e.g. "anthropic/claude-sonnet-4-6"). */
+	model?: string;
+}
+
+export interface SessionNewResult {
+	ok: true;
+	sessionId: string;
+	model?: { provider: string; id: string };
+}
+
+export interface SessionSetModelParams {
+	/** Model in provider/id format (e.g. "anthropic/claude-sonnet-4-6") or just model id. */
+	model: string;
+	/** Provider name (required if model doesn't contain a slash). */
+	provider?: string;
+}
+
+export interface SessionSetModelResult {
+	ok: true;
+	model: { provider: string; id: string };
+}
+
+export interface SessionArtifact {
+	filename: string;
+	content: string;
+	createdAt: string;
+	updatedAt: string;
+}
+
+export interface SessionArtifactsResult {
+	sessionId?: string;
+	artifacts: SessionArtifact[];
 }
 
 export interface SessionChangedEventData {

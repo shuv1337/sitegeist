@@ -41,6 +41,9 @@ import {
 } from "./protocol.js";
 import { BridgeServer } from "./server.js";
 
+declare const __SHUVGEIST_VERSION__: string;
+const VERSION = typeof __SHUVGEIST_VERSION__ !== "undefined" ? __SHUVGEIST_VERSION__ : "dev";
+
 function getConfigPath(): string {
 	return join(homedir(), ".shuvgeist", "bridge.json");
 }
@@ -289,6 +292,7 @@ async function fetchBridgeStatus(flags: { url?: string; host?: string; port?: st
 		if (jsonMode) {
 			console.log(JSON.stringify(status, null, 2));
 		} else {
+			console.log(`CLI version: ${VERSION}`);
 			console.log(`Bridge: ${statusUrl}`);
 			console.log(`Extension connected: ${status.extension.connected ? "yes" : "no"}`);
 			if (status.extension.connected) {
@@ -597,7 +601,7 @@ function generateToken(): string {
 }
 
 function printUsage(): void {
-	console.log(`shuvgeist — CLI bridge for the Shuvgeist browser extension
+	console.log(`shuvgeist ${VERSION} — CLI bridge for the Shuvgeist browser extension
 
 Usage:
   shuvgeist serve [--host HOST] [--port PORT] [--token TOKEN]
@@ -612,6 +616,9 @@ Usage:
   shuvgeist select <message> [--json] [--timeout none]
   shuvgeist session [--last N] [--json] [--follow]
   shuvgeist inject <text> [--role user|assistant] [--json]
+  shuvgeist new-session [provider/model-id] [--json]
+  shuvgeist set-model <provider/model-id> [--json]
+  shuvgeist artifacts [--json]
 
 Global options:
   --url <ws://...>    Bridge server URL
@@ -637,6 +644,10 @@ async function main(): Promise<void> {
 	const args = process.argv.slice(2);
 	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
 		printUsage();
+		process.exit(0);
+	}
+	if (args[0] === "--version" || args[0] === "-v") {
+		console.log(VERSION);
 		process.exit(0);
 	}
 
@@ -736,6 +747,35 @@ async function main(): Promise<void> {
 			await runOneShot("select_element", { message }, flags, undefined);
 			break;
 		}
+		case "session":
+			await cmdSession(flags);
+			break;
+		case "inject": {
+			const text = positionals.join(" ");
+			if (!text) {
+				console.error("Usage: shuvgeist inject <text> [--role user|assistant]");
+				process.exit(1);
+			}
+			await cmdInject(text, flags);
+			break;
+		}
+		case "new-session": {
+			const model = positionals[0];
+			await runOneShot("session_new", model ? { model } : {}, flags, BridgeDefaults.REQUEST_TIMEOUT_MS);
+			break;
+		}
+		case "set-model": {
+			const model = positionals[0];
+			if (!model) {
+				console.error("Usage: shuvgeist set-model <provider/model-id>");
+				process.exit(1);
+			}
+			await runOneShot("session_set_model", { model }, flags, BridgeDefaults.REQUEST_TIMEOUT_MS);
+			break;
+		}
+		case "artifacts":
+			await runOneShot("session_artifacts", {}, flags, BridgeDefaults.REQUEST_TIMEOUT_MS);
+			break;
 		default:
 			console.error("Unknown command: " + command);
 			console.error("Run 'shuvgeist --help' for usage.");

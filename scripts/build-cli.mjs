@@ -4,7 +4,7 @@
  * Bundles `ws` into the output so it does not need to be a runtime dependency.
  * Output goes to dist-cli/ with a hashbang for direct execution.
  */
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -13,6 +13,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const packageRoot = join(__dirname, "..");
 const outDir = join(packageRoot, "dist-cli");
+const manifest = JSON.parse(readFileSync(join(packageRoot, "static/manifest.chrome.json"), "utf-8"));
+const version = manifest.version;
 
 rmSync(outDir, { recursive: true, force: true });
 mkdirSync(outDir, { recursive: true });
@@ -43,6 +45,7 @@ await build({
 	},
 	define: {
 		"process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV ?? "production"),
+		__SHUVGEIST_VERSION__: JSON.stringify(version),
 	},
 	// Bundle ws but keep Node builtins external (they're available at runtime)
 	external: [

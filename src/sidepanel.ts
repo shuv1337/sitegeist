@@ -24,7 +24,15 @@ import { html, render } from "lit";
 import { History, Plus, Settings } from "lucide";
 import { BridgeClient } from "./bridge/extension-client.js";
 import { bridgeLog } from "./bridge/logging.js";
-import { ErrorCodes, type SessionInjectParams } from "./bridge/protocol.js";
+import {
+	ErrorCodes,
+	type SessionArtifactsResult,
+	type SessionInjectParams,
+	type SessionNewParams,
+	type SessionNewResult,
+	type SessionSetModelParams,
+	type SessionSetModelResult,
+} from "./bridge/protocol.js";
 import {
 	projectSessionMessage,
 	projectSessionMessages,
@@ -563,13 +571,27 @@ const appendInjectedMessage = async (params: SessionInjectParams) => {
 					timestamp,
 				};
 
-	agent.appendMessage(message);
+	const messageIndex = agent.state.messages.length;
+
+	if (params.role === "assistant") {
+		// Assistant messages are just appended — no agent turn needed.
+		agent.appendMessage(message);
+	} else {
+		// User messages trigger a full agent turn (prompt + model response),
+		// matching the behavior of typing in the sidebar input.
+		// prompt() is async and runs the agent loop, but we don't await it
+		// here — the caller gets the inject confirmation immediately while
+		// the model streams in the background.
+		agent.prompt(message).catch((err) => {
+			console.error("[Bridge] Injected prompt failed:", err);
+		});
+	}
+
 	if (!currentTitle && shouldSaveSession(agent.state.messages)) {
 		currentTitle = generateTitle(agent.state.messages);
 	}
 	await saveSession();
 	renderApp();
-	const messageIndex = agent.state.messages.length - 1;
 	emitSessionMessage(message, messageIndex);
 	emitSessionChanged();
 	return {
@@ -579,10 +601,131 @@ const appendInjectedMessage = async (params: SessionInjectParams) => {
 	};
 };
 
+const bridgeNewSession = async (params: SessionNewParams): Promise<SessionNewResult> => {
+	// Wait for any active streaming to finish before switching
+	if (agent.state.isStreaming) {
+		await agent.waitForIdle();
+	}
+
+	// Resolve model if requested
+	let model: Model<any> | undefined;
+	if (params.model) {
+		model = await resolveModelSpec(params.model);
+	}
+
+	// Reset session state
+	currentSessionId = undefined;
+	currentTitle = "";
+
+	// Create fresh agent (reuses the full setup in createAgent)
+	await createAgent(
+		model
+			? {
+					systemPrompt: SYSTEM_PROMPT,
+					model,
+					thinkingLevel: "medium",
+					messages: [],
+					tools: [],
+				}
+			: undefined,
+	);
+
+	// Assign a session ID immediately so inject works right away
+	currentSessionId = crypto.randomUUID();
+	updateUrl(currentSessionId);
+	void syncBridgeConnection();
+	emitSessionChanged();
+	renderApp();
+
+	return {
+		ok: true as const,
+		sessionId: currentSessionId,
+		model: agent.state.model ? { provider: agent.state.model.provider, id: agent.state.model.id } : undefined,
+	};
+};
+
+/**
+ * Resolve a model spec string like "anthropic/claude-sonnet-4-6" or "gpt-4o"
+ * into a Model object, checking built-in models and custom providers.
+ */
+const resolveModelSpec = async (spec: string, providerHint?: string): Promise<Model<any>> => {
+	// Try "provider/modelId" format
+	if (spec.includes("/")) {
+		const [provider, ...rest] = spec.split("/");
+		const modelId = rest.join("/");
+
+		// Built-in model
+		const builtIn = getModel(provider as any, modelId);
+		if (builtIn) return builtIn;
+
+		// Custom provider model
+		const customProvider = await getCustomProviderByName(provider);
+		const customModel = customProvider?.models?.find((m) => m.id === modelId);
+		if (customModel) return customModel;
+
+		throw new Error(`Model not found: ${spec}`);
+	}
+
+	// Plain model ID — use provider hint or search all providers
+	if (providerHint) {
+		const builtIn = getModel(providerHint as any, spec);
+		if (builtIn) return builtIn;
+
+		const customProvider = await getCustomProviderByName(providerHint);
+		const customModel = customProvider?.models?.find((m) => m.id === spec);
+		if (customModel) return customModel;
+	}
+
+	// Search all custom providers for matching model ID
+	const allCustom = await storage.customProviders.getAll();
+	for (const cp of allCustom) {
+		const match = cp.models?.find((m) => m.id === spec);
+		if (match) return match;
+	}
+
+	throw new Error(`Model not found: ${spec}${providerHint ? ` (provider: ${providerHint})` : ""}`);
+};
+
+const bridgeSetModel = async (params: SessionSetModelParams): Promise<SessionSetModelResult> => {
+	const model = await resolveModelSpec(params.model, params.provider);
+
+	agent.setModel(model);
+	chatPanel.agentInterface?.requestUpdate();
+	await storage.settings.set("lastUsedModel", model);
+	updateAuthLabel().catch(() => {});
+	emitSessionChanged();
+	renderApp();
+
+	return {
+		ok: true as const,
+		model: { provider: model.provider, id: model.id },
+	};
+};
+
 const sessionBridgeAdapter: SessionBridgeAdapter = {
 	getSnapshot: currentSessionSnapshot,
 	waitForIdle: () => agent.waitForIdle(),
 	appendInjectedMessage,
+	newSession: bridgeNewSession,
+	setModel: bridgeSetModel,
+	getArtifacts(): SessionArtifactsResult {
+		const artifacts = chatPanel.artifactsPanel?.artifacts;
+		const result: SessionArtifactsResult = {
+			sessionId: currentSessionId,
+			artifacts: [],
+		};
+		if (artifacts) {
+			for (const [, artifact] of artifacts) {
+				result.artifacts.push({
+					filename: artifact.filename,
+					content: artifact.content,
+					createdAt: artifact.createdAt.toISOString(),
+					updatedAt: artifact.updatedAt.toISOString(),
+				});
+			}
+		}
+		return result;
+	},
 	subscribe(listener) {
 		sessionBridgeListeners.add(listener);
 		return () => sessionBridgeListeners.delete(listener);

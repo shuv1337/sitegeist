@@ -1,13 +1,18 @@
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import { type Attachment, isUserMessageWithAttachments } from "@mariozechner/pi-web-ui";
 import type {
+	SessionArtifactsResult,
 	SessionChangedEventData,
 	SessionHistoryParams,
 	SessionHistoryResult,
 	SessionInjectParams,
 	SessionInjectResult,
 	SessionMessageEventData,
+	SessionNewParams,
+	SessionNewResult,
 	SessionRunStateEventData,
+	SessionSetModelParams,
+	SessionSetModelResult,
 	SessionToolEventData,
 	SessionWireMessage,
 } from "./protocol.js";
@@ -33,6 +38,9 @@ export interface SessionBridgeAdapter {
 	getSnapshot(): SessionSnapshot;
 	waitForIdle(): Promise<void>;
 	appendInjectedMessage(params: SessionInjectParams): Promise<SessionInjectResult>;
+	newSession(params: SessionNewParams): Promise<SessionNewResult>;
+	setModel(params: SessionSetModelParams): Promise<SessionSetModelResult>;
+	getArtifacts(): SessionArtifactsResult;
 	subscribe(listener: (event: SessionBridgeEventEnvelope) => void): () => void;
 }
 

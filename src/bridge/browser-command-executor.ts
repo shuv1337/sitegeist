@@ -23,10 +23,15 @@ import type {
 	ReplParams,
 	ScreenshotParams,
 	SelectElementParams,
+	SessionArtifactsResult,
 	SessionHistoryParams,
 	SessionHistoryResult,
 	SessionInjectParams,
 	SessionInjectResult,
+	SessionNewParams,
+	SessionNewResult,
+	SessionSetModelParams,
+	SessionSetModelResult,
 } from "./protocol.js";
 import { ErrorCodes, getBridgeCapabilities } from "./protocol.js";
 import { buildSessionHistoryResult, type SessionBridgeAdapter } from "./session-bridge.js";
@@ -99,6 +104,12 @@ export class BrowserCommandExecutor {
 				return this.sessionHistory((params ?? {}) as SessionHistoryParams);
 			case "session_inject":
 				return this.sessionInject(params as unknown as SessionInjectParams, signal);
+			case "session_new":
+				return this.sessionNew((params ?? {}) as SessionNewParams);
+			case "session_set_model":
+				return this.sessionSetModel(params as unknown as SessionSetModelParams);
+			case "session_artifacts":
+				return this.sessionArtifacts();
 			default:
 				throw new Error("Unknown method: " + method);
 		}
@@ -184,5 +195,26 @@ export class BrowserCommandExecutor {
 			throw error;
 		}
 		return this.sessionBridge.appendInjectedMessage(params);
+	}
+
+	async sessionNew(params: SessionNewParams): Promise<SessionNewResult> {
+		if (!this.sessionBridge) {
+			throw new Error("Session bridge is not available");
+		}
+		return this.sessionBridge.newSession(params);
+	}
+
+	async sessionSetModel(params: SessionSetModelParams): Promise<SessionSetModelResult> {
+		if (!this.sessionBridge) {
+			throw new Error("Session bridge is not available");
+		}
+		return this.sessionBridge.setModel(params);
+	}
+
+	async sessionArtifacts(): Promise<SessionArtifactsResult> {
+		if (!this.sessionBridge) {
+			throw new Error("Session bridge is not available");
+		}
+		return this.sessionBridge.getArtifacts();
 	}
 }
