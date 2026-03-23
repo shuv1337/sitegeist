@@ -19,10 +19,10 @@ jobs:
           node-version: 22
 
       - name: Clone mini-lit
-        run: git clone --depth 1 https://github.com/badlogic/mini-lit.git ../mini-lit
+        run: git clone --depth 1 https://github.com/shuv1337/mini-lit.git ../mini-lit
 
       - name: Clone pi-mono
-        run: git clone --depth 1 https://github.com/badlogic/pi-mono.git ../pi-mono
+        run: git clone --depth 1 https://github.com/shuv1337/pi-mono.git ../pi-mono
 
       - name: Install mini-lit
         run: cd ../mini-lit && npm install && npm run build
@@ -30,7 +30,7 @@ jobs:
       - name: Install pi-mono
         run: cd ../pi-mono && npm install && npm run build
 
-      - name: Install sitegeist
+      - name: Install shuvgeist
         run: npm install
 
       - name: Build extension
@@ -40,7 +40,7 @@ jobs:
         run: |
           cd dist-chrome
           find . -name "*.map" -type f -delete
-          zip -r ../sitegeist.zip .
+          zip -r ../shuvgeist.zip .
 
       - name: Extract version
         id: version
@@ -55,7 +55,7 @@ jobs:
             const re = new RegExp('## \\\\[' + version.replace(/\\./g, '\\\\.') + '\\\\][^\\\\n]*\\n(.*?)(?=\\n## \\\\[|$)', 's');
             const match = changelog.match(re);
             let notes = match ? match[1].trim() : '';
-            notes += '\n\n---\n\nDownload \`sitegeist.zip\`, unzip, and load as unpacked extension in Chrome/Edge.\n\nSee [installation instructions](https://sitegeist.ai/install.html) for details.';
+            notes += '\n\n---\n\nDownload \`shuvgeist.zip\`, unzip, and load as unpacked extension in Chrome/Edge.\n\nSee [installation instructions](https://geist.shuv.ai/install.html) for details.';
             fs.writeFileSync('/tmp/release-notes.md', notes);
           "
         env:
@@ -63,8 +63,8 @@ jobs:
 
       - name: Create release
         run: |
-          gh release create ${{ github.ref_name }} sitegeist.zip \
-            --title "Sitegeist ${{ steps.version.outputs.version }}" \
+          gh release create ${{ github.ref_name }} shuvgeist.zip \
+            --title "Shuvgeist ${{ steps.version.outputs.version }}" \
             --notes-file /tmp/release-notes.md \
             --latest
         env:

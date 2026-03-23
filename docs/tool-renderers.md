@@ -113,7 +113,7 @@ const navigateRenderer: ToolRenderer<NavigateParams, NavigateResult> = {
 - `extract_document` - Document extraction from web pages
 - `artifacts` - File artifact management (ArtifactsToolRenderer)
 
-**sitegeist Extension:**
+**shuvgeist Extension:**
 - `repl` - Page JavaScript execution with collapsible code
 - `skill` - Skill management operations (list, get, create, update, delete, patch)
 - `navigate` - Page navigation with favicon display
@@ -169,4 +169,4 @@ Use `isCustom: false` when:
 
 **Renderers:**
 - `pi-mono/packages/web-ui/src/tools/renderers/` - Built-in renderers
-- `sitegeist/src/tools/` - Extension-specific renderers
+- `shuvgeist/src/tools/` - Extension-specific renderers

@@ -1,5 +1,5 @@
 /**
- * Browser OAuth integration for sitegeist.
+ * Browser OAuth integration for shuvgeist.
  *
  * Credentials are stored as JSON strings in the provider keys store.
  * When getApiKey encounters a JSON string, it parses it as OAuthCredentials,

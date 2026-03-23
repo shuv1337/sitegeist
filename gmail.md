@@ -412,7 +412,7 @@ return "Gmail utilities installed on window.gmailUtils";
 
 All operations have been tested successfully:
 
-✅ **Send Email** - Sent test email to badlogicgames@gmail.com  
+✅ **Send Email** - Sent test email to shuv1337games@gmail.com  
 ✅ **Read Email** - Extracted subject, sender, body, timestamp  
 ✅ **List Emails** - Retrieved 4 emails from inbox with metadata  
 ✅ **Reply** - Replied to test email  

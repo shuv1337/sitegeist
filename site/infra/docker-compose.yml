@@ -1,11 +1,11 @@
-name: sitegeist-site
+name: shuvgeist-site
 
 services:
   web:
     image: caddy:alpine
     restart: unless-stopped
     labels:
-      caddy: sitegeist.ai
+      caddy: geist.shuv.ai
       caddy.reverse_proxy: '{{upstreams 80}}'
     volumes:
       - ../dist/frontend:/srv:ro

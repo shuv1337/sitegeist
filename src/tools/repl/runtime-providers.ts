@@ -3,7 +3,7 @@ import {
 	BROWSERJS_RUNTIME_PROVIDER_DESCRIPTION,
 	NAVIGATE_RUNTIME_PROVIDER_DESCRIPTION,
 } from "../../prompts/prompts.js";
-import { getSitegeistStorage } from "../../storage/app-storage.js";
+import { getShuvgeistStorage } from "../../storage/app-storage.js";
 import type { NavigateParams, NavigateTool } from "../navigate.js";
 import { buildWrapperCode, checkUserScriptsAvailability } from "./userscripts-helpers.js";
 
@@ -143,7 +143,7 @@ export class BrowserJsRuntimeProvider implements SandboxRuntimeProvider {
 		}
 
 		// Load skills for current tab URL
-		const skillsRepo = getSitegeistStorage().skills;
+		const skillsRepo = getShuvgeistStorage().skills;
 		let skillLibrary = "";
 
 		if (tab.url) {
@@ -187,7 +187,7 @@ export class BrowserJsRuntimeProvider implements SandboxRuntimeProvider {
 		);
 
 		// Use fixed worldId for all executions
-		const FIXED_WORLD_ID = "sitegeist-browser-script";
+		const FIXED_WORLD_ID = "shuvgeist-browser-script";
 
 		// Check if terminate API is available (Chrome 138+)
 		// @ts-expect-error - terminate is not yet in the type definitions

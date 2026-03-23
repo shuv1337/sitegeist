@@ -1,5 +1,5 @@
 /**
- * Centralized prompts/descriptions for Sitegeist.
+ * Centralized prompts/descriptions for Shuvgeist.
  * Each prompt is either a string constant or a template function.
  */
 

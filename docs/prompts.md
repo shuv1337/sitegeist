@@ -70,7 +70,7 @@ The descriptions from runtime providers are **dynamically injected** so the LLM 
 ## Current Prompts
 
 ### Web-UI Prompts
-**File**: `/Users/badlogic/workspaces/pi-mono/packages/web-ui/src/prompts/prompts.ts`
+**File**: `/Users/shuv1337/workspaces/pi-mono/packages/web-ui/src/prompts/prompts.ts`
 
 Shared prompts and runtime provider descriptions:
 
@@ -84,10 +84,10 @@ Shared prompts and runtime provider descriptions:
 - `ATTACHMENTS_RUNTIME_DESCRIPTION` - User attachment access: `listAttachments()`, `readTextAttachment()`, `readBinaryAttachment()`
 - `EXTRACT_DOCUMENT_DESCRIPTION` - Extract text from PDF/DOCX/XLSX/PPTX
 
-### Sitegeist Prompts
-**File**: `/Users/badlogic/workspaces/sitegeist/src/prompts/prompts.ts`
+### Shuvgeist Prompts
+**File**: `/Users/shuv1337/workspaces/shuvgeist/src/prompts/prompts.ts`
 
-Sitegeist-specific prompts:
+Shuvgeist-specific prompts:
 
 **System Prompt**:
 - `SYSTEM_PROMPT` - Main agent identity, tone, workflows
@@ -310,8 +310,8 @@ For tools that manipulate content (artifacts, skills), use consistent action nam
 ### When Adding a New Tool
 
 1. **Choose the right location**:
-   - Shared/reusable tools → `/Users/badlogic/workspaces/pi-mono/packages/web-ui/src/prompts/prompts.ts`
-   - Sitegeist-specific tools → `/Users/badlogic/workspaces/sitegeist/src/prompts/prompts.ts`
+   - Shared/reusable tools → `/Users/shuv1337/workspaces/pi-mono/packages/web-ui/src/prompts/prompts.ts`
+   - Shuvgeist-specific tools → `/Users/shuv1337/workspaces/shuvgeist/src/prompts/prompts.ts`
 
 2. **Follow the tool description pattern** (see above)
 
@@ -368,23 +368,23 @@ After updating prompts:
 ### Key Files
 
 **Interfaces**:
-- `/Users/badlogic/workspaces/pi-mono/packages/web-ui/src/components/sandbox/SandboxRuntimeProvider.ts` - Provider interface
+- `/Users/shuv1337/workspaces/pi-mono/packages/web-ui/src/components/sandbox/SandboxRuntimeProvider.ts` - Provider interface
 
 **Prompt Definitions**:
-- `/Users/badlogic/workspaces/pi-mono/packages/web-ui/src/prompts/prompts.ts` - Shared prompts and providers
-- `/Users/badlogic/workspaces/sitegeist/src/prompts/prompts.ts` - Sitegeist-specific prompts
+- `/Users/shuv1337/workspaces/pi-mono/packages/web-ui/src/prompts/prompts.ts` - Shared prompts and providers
+- `/Users/shuv1337/workspaces/shuvgeist/src/prompts/prompts.ts` - Shuvgeist-specific prompts
 
 **Provider Implementations**:
-- `/Users/badlogic/workspaces/pi-mono/packages/web-ui/src/components/sandbox/ArtifactsRuntimeProvider.ts` - Artifacts provider
-- `/Users/badlogic/workspaces/sitegeist/src/tools/NativeInputEventsRuntimeProvider.ts` - Native events provider
-- `/Users/badlogic/workspaces/sitegeist/src/tools/repl/runtime-providers.ts` - BrowserJs and Navigate providers
+- `/Users/shuv1337/workspaces/pi-mono/packages/web-ui/src/components/sandbox/ArtifactsRuntimeProvider.ts` - Artifacts provider
+- `/Users/shuv1337/workspaces/shuvgeist/src/tools/NativeInputEventsRuntimeProvider.ts` - Native events provider
+- `/Users/shuv1337/workspaces/shuvgeist/src/tools/repl/runtime-providers.ts` - BrowserJs and Navigate providers
 
 **Tool Implementations**:
-- `/Users/badlogic/workspaces/pi-mono/packages/web-ui/src/tools/artifacts/artifacts.ts` - Artifacts tool
-- `/Users/badlogic/workspaces/sitegeist/src/tools/repl/repl.ts` - REPL tool
+- `/Users/shuv1337/workspaces/pi-mono/packages/web-ui/src/tools/artifacts/artifacts.ts` - Artifacts tool
+- `/Users/shuv1337/workspaces/shuvgeist/src/tools/repl/repl.ts` - REPL tool
 
 **Integration**:
-- `/Users/badlogic/workspaces/sitegeist/src/sidepanel.ts` - Tool and provider composition
+- `/Users/shuv1337/workspaces/shuvgeist/src/sidepanel.ts` - Tool and provider composition
 
 ### Related Documentation
 - `docs/tool-renderers.md` - How tool invocations are rendered in UI

@@ -4,11 +4,11 @@ import { html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
 /**
- * Custom user message component for Sitegeist with fancy pill styling.
+ * Custom user message component for Shuvgeist with fancy pill styling.
  * Duplicates the web-ui UserMessage but with our custom styling.
  */
-@customElement("sitegeist-user-message")
-export class SitegeistUserMessage extends LitElement {
+@customElement("shuvgeist-user-message")
+export class ShuvgeistUserMessage extends LitElement {
 	@property({ type: Object }) message!: UserMessageWithAttachments;
 
 	protected override createRenderRoot(): HTMLElement | DocumentFragment {
@@ -52,7 +52,7 @@ export class SitegeistUserMessage extends LitElement {
 export function createUserMessageRenderer(): MessageRenderer<UserMessageWithAttachments> {
 	return {
 		render: (message) => {
-			return html`<sitegeist-user-message .message=${message}></sitegeist-user-message>`;
+			return html`<shuvgeist-user-message .message=${message}></shuvgeist-user-message>`;
 		},
 	};
 }

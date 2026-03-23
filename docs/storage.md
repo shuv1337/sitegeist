@@ -2,11 +2,11 @@
 
 ## Overview
 
-Sitegeist uses a unified IndexedDB storage system with multiple object stores for different data types. The base storage infrastructure is defined in `@mariozechner/pi-web-ui` and extended in Sitegeist with additional stores for skills.
+Shuvgeist uses a unified IndexedDB storage system with multiple object stores for different data types. The base storage infrastructure is defined in `@mariozechner/pi-web-ui` and extended in Shuvgeist with additional stores for skills.
 
 ## Current Implementation
 
-Single IndexedDB database `sitegeist-storage` with multiple object stores:
+Single IndexedDB database `shuvgeist-storage` with multiple object stores:
 
 **Base stores** (from web-ui):
 - `sessions` - Full session data (messages, model, thinking level)
@@ -14,7 +14,7 @@ Single IndexedDB database `sitegeist-storage` with multiple object stores:
 - `settings` - Application settings (key-value pairs)
 - `provider-keys` - API keys for LLM providers
 
-**Extension stores** (Sitegeist-specific):
+**Extension stores** (Shuvgeist-specific):
 - `skills` - Skill definitions with library code
 
 **Benefits**:
@@ -77,7 +77,7 @@ Implements the `StorageBackend` interface using IndexedDB APIs.
 **Example usage**:
 ```typescript
 const backend = new IndexedDBStorageBackend({
-  dbName: 'sitegeist-storage',
+  dbName: 'shuvgeist-storage',
   version: 1,
   stores: [
     {
@@ -223,7 +223,7 @@ export class SessionsStore extends Store {
 - `lastModified` index enables sorted queries via IndexedDB cursor
 - Much faster than fetching all keys and sorting in JavaScript
 
-## Extension Stores (Sitegeist)
+## Extension Stores (Shuvgeist)
 
 ### SkillsStore
 
@@ -293,11 +293,11 @@ export function setAppStorage(storage: AppStorage): void {
 }
 ```
 
-### SitegeistAppStorage (extension)
+### ShuvgeistAppStorage (extension)
 
 Location: `src/storage/app-storage.ts`
 
-Extends base storage with Sitegeist-specific stores.
+Extends base storage with Shuvgeist-specific stores.
 
 **Initialization order**:
 1. Create store instances (no backend)
@@ -360,7 +360,7 @@ const sessions = await storage.sessions.getAllMetadata();
 ### Managing Skills
 
 ```typescript
-const storage = getSitegeistStorage();
+const storage = getShuvgeistStorage();
 
 // Save a skill
 await storage.skills.save({
@@ -419,7 +419,7 @@ if (granted) {
 
 ### Inspecting IndexedDB
 
-Chrome DevTools → Application → IndexedDB → `sitegeist-storage`
+Chrome DevTools → Application → IndexedDB → `shuvgeist-storage`
 
 - View all object stores
 - Inspect indices
@@ -539,6 +539,6 @@ export class DataExporter {
 - [stores/provider-keys-store.ts](../../pi-mono/packages/web-ui/src/storage/stores/provider-keys-store.ts)
 - [stores/sessions-store.ts](../../pi-mono/packages/web-ui/src/storage/stores/sessions-store.ts)
 
-### Extension Storage (sitegeist)
-- [app-storage.ts](../src/storage/app-storage.ts) - SitegeistAppStorage
+### Extension Storage (shuvgeist)
+- [app-storage.ts](../src/storage/app-storage.ts) - ShuvgeistAppStorage
 - [stores/skills-store.ts](../src/storage/stores/skills-store.ts) - Skills repository

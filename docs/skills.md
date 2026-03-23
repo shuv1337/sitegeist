@@ -191,7 +191,7 @@ When skill breaks (selectors changed, page updated):
 
 ## Default Skills
 
-Sitegeist ships with built-in skills:
+Shuvgeist ships with built-in skills:
 
 - **google** - Extract search results, featured snippets, related searches
 - **google-sheets** - Cell/range operations, formatting, title management

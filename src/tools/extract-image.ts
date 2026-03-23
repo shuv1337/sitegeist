@@ -78,7 +78,7 @@ async function getImageInfoFromPage(
 
 	try {
 		await chrome.userScripts.configureWorld({
-			worldId: "sitegeist-extract-image",
+			worldId: "shuvgeist-extract-image",
 			messaging: true,
 		});
 	} catch {
@@ -89,7 +89,7 @@ async function getImageInfoFromPage(
 		js: [{ code }],
 		target: { tabId, allFrames: false },
 		world: "USER_SCRIPT",
-		worldId: "sitegeist-extract-image",
+		worldId: "shuvgeist-extract-image",
 		injectImmediately: true,
 	} as any);
 

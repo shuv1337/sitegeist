@@ -27,7 +27,7 @@ export class AboutTab extends SettingsTab {
 	}
 
 	private openUpdatePage() {
-		window.open("https://sitegeist.ai/install.html#updating", "_blank");
+		window.open("https://geist.shuv.ai/install.html#updating", "_blank");
 	}
 
 	render(): TemplateResult {
@@ -94,11 +94,11 @@ export class AboutTab extends SettingsTab {
 
 				<div class="pt-4 space-y-2">
 					<div class="text-xs text-muted-foreground space-x-3">
-						<a href="https://sitegeist.ai" target="_blank" class="text-primary hover:underline">${i18n("Website")}</a>
+						<a href="https://geist.shuv.ai" target="_blank" class="text-primary hover:underline">${i18n("Website")}</a>
 						<span>·</span>
-						<a href="https://sitegeist.ai/imprint" target="_blank" class="text-primary hover:underline">${i18n("Imprint")}</a>
+						<a href="https://geist.shuv.ai/imprint" target="_blank" class="text-primary hover:underline">${i18n("Imprint")}</a>
 						<span>·</span>
-						<a href="https://sitegeist.ai/privacy" target="_blank" class="text-primary hover:underline">${i18n("Privacy")}</a>
+						<a href="https://geist.shuv.ai/privacy" target="_blank" class="text-primary hover:underline">${i18n("Privacy")}</a>
 					</div>
 				</div>
 			</div>

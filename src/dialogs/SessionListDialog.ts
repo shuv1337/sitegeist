@@ -13,8 +13,8 @@ type ExportedSession = {
 	metadata: SessionMetadata;
 };
 
-@customElement("sitegeist-session-list-dialog")
-export class SitegeistSessionListDialog extends DialogBase {
+@customElement("shuvgeist-session-list-dialog")
+export class ShuvgeistSessionListDialog extends DialogBase {
 	@state() private sessions: SessionMetadata[] = [];
 	@state() private loading = true;
 	@state() private sessionLocks: Record<string, number> = {}; // sessionId -> windowId
@@ -50,7 +50,7 @@ export class SitegeistSessionListDialog extends DialogBase {
 	};
 
 	static async open(onSelect: (sessionId: string) => void, onDelete?: (sessionId: string) => void) {
-		const dialog = new SitegeistSessionListDialog();
+		const dialog = new ShuvgeistSessionListDialog();
 		dialog.onSelectCallback = onSelect;
 		dialog.onDeleteCallback = onDelete;
 		dialog.open();

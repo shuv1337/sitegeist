@@ -25,7 +25,7 @@ test.describe("site smoke", () => {
 	test("home and install pages expose key content", async ({ page }) => {
 		const site = await serveSite();
 		await page.goto(site.url);
-		await expect(page).toHaveTitle(/Sitegeist/);
+		await expect(page).toHaveTitle(/Shuvgeist/);
 		await expect(page.getByText("Download from GitHub").first()).toBeVisible();
 		await expect(page.getByText("Installation instructions").first()).toBeVisible();
 

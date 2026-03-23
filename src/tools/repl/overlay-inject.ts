@@ -1,6 +1,6 @@
 import { createOverlayScript, removeOverlayScript } from "./overlay-content.js";
 
-const OVERLAY_WORLD_ID = "sitegeist-repl-overlay";
+const OVERLAY_WORLD_ID = "shuvgeist-repl-overlay";
 
 /**
  * Get the currently active tab ID.

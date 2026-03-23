@@ -699,9 +699,9 @@ Foreground `serve` is easier to reason about, test, and stop. Users can supervis
 
 ### Keep packaging decisions separate from bridge functionality
 
-Current `package.json` is still named `sitegeist`. The executable can still be `shuvgeist`, but publish/install UX should be settled after the bridge works locally.
+Current `package.json` is still named `shuvgeist`. The executable can still be `shuvgeist`, but publish/install UX should be settled after the bridge works locally.
 
-Phase 2 adds `"bin": { "shuvgeist": "dist-cli/shuvgeist.mjs" }` to `package.json`. This enables `npm link` for local global command exposure during development. The mismatch between the package name (`sitegeist`) and the binary name (`shuvgeist`) is acceptable for now but should be resolved before any npm publish.
+Phase 2 adds `"bin": { "shuvgeist": "dist-cli/shuvgeist.mjs" }` to `package.json`. This enables `npm link` for local global command exposure during development. The mismatch between the package name (`shuvgeist`) and the binary name (`shuvgeist`) is acceptable for now but should be resolved before any npm publish.
 
 Practical dev usage for V1:
 - `node dist-cli/shuvgeist.mjs serve --host 0.0.0.0`

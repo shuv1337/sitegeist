@@ -2,7 +2,7 @@
 
 ## Objective
 
-Create a repeatable local test deployment workflow for Sitegeist so we can validate the browser extension in a production-like state before release, without depending on the full long-running dev watcher stack.
+Create a repeatable local test deployment workflow for Shuvgeist so we can validate the browser extension in a production-like state before release, without depending on the full long-running dev watcher stack.
 
 This plan covers:
 - the current project architecture and dev flow
@@ -16,7 +16,7 @@ This is a planning document only. No implementation is included here.
 
 ### What this project is
 
-Sitegeist is a Chrome/Edge side panel extension that embeds an AI assistant into the browser and can navigate pages, run tools, extract data, and operate with multiple model providers.
+Shuvgeist is a Chrome/Edge side panel extension that embeds an AI assistant into the browser and can navigate pages, run tools, extract data, and operate with multiple model providers.
 
 There is also a separate `site/` subproject for the marketing/install website.
 
@@ -43,7 +43,7 @@ There is also a separate `site/` subproject for the marketing/install website.
 - `./dev.sh` starts:
   - `../mini-lit` TS watcher
   - `../pi-mono` TS watcher
-  - Sitegeist extension watcher
+  - Shuvgeist extension watcher
   - site frontend dev server
 - Extension watcher writes to `dist-chrome/`
 - Developer manually loads `dist-chrome/` via `chrome://extensions`
@@ -351,7 +351,7 @@ Note: if check time is high, keep `./check.sh` as a required pre-step in docs ra
 - [ ] Build with `npm run build`
 - [ ] Load `dist-chrome/` as unpacked extension
 - [ ] Open a normal webpage
-- [ ] Launch Sitegeist sidepanel
+- [ ] Launch Shuvgeist sidepanel
 - [ ] Configure one provider
 - [ ] Send one prompt
 - [ ] Trigger one browser action

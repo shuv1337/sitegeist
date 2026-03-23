@@ -6,13 +6,13 @@ export function createOverlayScript(taskName: string): string {
 	return `
 (function() {
 	// Check if overlay already exists (prevent duplicates)
-	if (document.getElementById('sitegeist-repl-overlay')) {
+	if (document.getElementById('shuvgeist-repl-overlay')) {
 		return;
 	}
 
 	// Create overlay container
 	const overlay = document.createElement('div');
-	overlay.id = 'sitegeist-repl-overlay';
+	overlay.id = 'shuvgeist-repl-overlay';
 	overlay.style.cssText = \`
 		position: fixed;
 		top: 0;
@@ -68,7 +68,7 @@ export function createOverlayScript(taskName: string): string {
 			rgba(255, 69, 0, 0.06) 80%,
 			rgba(220, 38, 38, 0.03) 100%
 		);
-		animation: sitegeist-shimmer-radial-1 3s ease-in-out infinite;
+		animation: shuvgeist-shimmer-radial-1 3s ease-in-out infinite;
 	\`;
 
 	// Layer 2: Mid magenta/red layer
@@ -87,7 +87,7 @@ export function createOverlayScript(taskName: string): string {
 			rgba(219, 39, 119, 0.08) 85%,
 			rgba(157, 23, 77, 0.04) 100%
 		);
-		animation: sitegeist-shimmer-radial-2 4s ease-in-out infinite;
+		animation: shuvgeist-shimmer-radial-2 4s ease-in-out infinite;
 	\`;
 
 	// Layer 3: Outer violet/purple layer - most prominent
@@ -106,7 +106,7 @@ export function createOverlayScript(taskName: string): string {
 			rgba(126, 34, 206, 0.12) 88%,
 			rgba(107, 33, 168, 0.08) 100%
 		);
-		animation: sitegeist-shimmer-radial-3 5s ease-in-out infinite;
+		animation: shuvgeist-shimmer-radial-3 5s ease-in-out infinite;
 	\`;
 
 	// Layer 4: Deep purple edge glow
@@ -119,7 +119,7 @@ export function createOverlayScript(taskName: string): string {
 		height: 100%;
 		box-shadow: inset 0 0 120px 20px rgba(126, 34, 206, 0.08),
 		            inset 0 0 60px 10px rgba(147, 51, 234, 0.05);
-		animation: sitegeist-pulse 2s ease-in-out infinite;
+		animation: shuvgeist-pulse 2s ease-in-out infinite;
 	\`;
 
 	shimmerContainer.appendChild(vignette);
@@ -181,7 +181,7 @@ export function createOverlayScript(taskName: string): string {
 			background: rgba(\${color}, \${opacity});
 			border-radius: 50%;
 			box-shadow: 0 0 \${size * 1.5}px rgba(\${color}, \${opacity * 0.5});
-			animation: sitegeist-particle-float \${duration}s ease-in-out \${delay}s infinite;
+			animation: shuvgeist-particle-float \${duration}s ease-in-out \${delay}s infinite;
 		\`;
 		particleContainer.appendChild(particle);
 	}
@@ -266,7 +266,7 @@ export function createOverlayScript(taskName: string): string {
 	// Add CSS animations
 	const style = document.createElement('style');
 	style.textContent = \`
-		@keyframes sitegeist-shimmer-radial-1 {
+		@keyframes shuvgeist-shimmer-radial-1 {
 			0%, 100% {
 				opacity: 0.8;
 				transform: scale(1);
@@ -277,7 +277,7 @@ export function createOverlayScript(taskName: string): string {
 			}
 		}
 
-		@keyframes sitegeist-shimmer-radial-2 {
+		@keyframes shuvgeist-shimmer-radial-2 {
 			0%, 100% {
 				opacity: 0.7;
 				transform: scale(1) rotate(0deg);
@@ -288,7 +288,7 @@ export function createOverlayScript(taskName: string): string {
 			}
 		}
 
-		@keyframes sitegeist-shimmer-radial-3 {
+		@keyframes shuvgeist-shimmer-radial-3 {
 			0%, 100% {
 				opacity: 0.75;
 				transform: scale(1.01);
@@ -299,7 +299,7 @@ export function createOverlayScript(taskName: string): string {
 			}
 		}
 
-		@keyframes sitegeist-pulse {
+		@keyframes shuvgeist-pulse {
 			0%, 100% {
 				box-shadow: inset 0 0 120px 20px rgba(126, 34, 206, 0.08),
 				            inset 0 0 60px 10px rgba(147, 51, 234, 0.05);
@@ -310,7 +310,7 @@ export function createOverlayScript(taskName: string): string {
 			}
 		}
 
-		@keyframes sitegeist-particle-float {
+		@keyframes shuvgeist-particle-float {
 			0%, 100% {
 				transform: translate(0, 0) scale(1);
 				opacity: 1;
@@ -343,7 +343,7 @@ export function createOverlayScript(taskName: string): string {
 export function removeOverlayScript(): string {
 	return `
 (function() {
-	const overlay = document.getElementById('sitegeist-repl-overlay');
+	const overlay = document.getElementById('shuvgeist-repl-overlay');
 	if (overlay) {
 		overlay.remove();
 	}

@@ -17,7 +17,7 @@ function makeSkill(name: string, domainPatterns: string[]): Skill {
 describe("SkillsStore", () => {
 	it("matches host and path patterns", () => {
 		const store = new SkillsStore();
-		expect(store.matchesAnyPattern("https://github.com/badlogic/sitegeist", ["github.com/badlogic/*"])).toBe(true);
+		expect(store.matchesAnyPattern("https://github.com/shuv1337/shuvgeist", ["github.com/shuv1337/*"])).toBe(true);
 		expect(store.matchesAnyPattern("https://www.google.com/search?q=test", ["google.com/search"])).toBe(true);
 		expect(store.matchesAnyPattern("https://example.com/about", ["example.com/admin/*"])).toBe(false);
 	});
@@ -29,14 +29,14 @@ describe("SkillsStore", () => {
 
 	it("lists only matching skills for a url", async () => {
 		const backend = new FakeStorageBackend();
-		backend.seed("skills", "github", makeSkill("github", ["github.com/badlogic/*"]));
+		backend.seed("skills", "github", makeSkill("github", ["github.com/shuv1337/*"]));
 		backend.seed("skills", "google", makeSkill("google", ["google.com/*"]));
 		backend.seed("skills", "example", makeSkill("example", ["example.com/*"]));
 
 		const store = new SkillsStore();
 		store.setBackend(backend);
 
-		const githubSkills = await store.list("https://github.com/badlogic/sitegeist");
+		const githubSkills = await store.list("https://github.com/shuv1337/shuvgeist");
 		expect(githubSkills.map((skill) => skill.name)).toEqual(["github"]);
 
 		const allSkills = await store.list();

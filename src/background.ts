@@ -10,7 +10,7 @@ import {
 } from "./background-state.js";
 import type { SidepanelToBackgroundMessage } from "./utils/port.js";
 
-// Called when Sitegeist icon is clicked - opens sidepanel for current tab
+// Called when Shuvgeist icon is clicked - opens sidepanel for current tab
 chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
 	const tabId = tab?.id;
 	if (tabId && chrome.sidePanel.open) {

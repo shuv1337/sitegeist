@@ -2,15 +2,15 @@
   <img src="media/hero.png" alt="Shuvgeist" width="400">
 </p>
 
-A fork of [Sitegeist](https://github.com/badlogic/sitegeist) with CLI bridge automation, WebP screenshot optimization, and additional model support.
+Shuvgeist is a browser automation extension with CLI bridge automation, WebP screenshot optimization, and additional model support.
 
 Shuvgeist is an AI assistant that lives in your browser sidebar. Built for collaboration, not autonomy theater. You guide, it executes. It can automate repetitive web tasks, extract data from any website, navigate across pages, fill out forms, compare products, compile research, and transform what it finds into documents, spreadsheets, or whatever you need.
 
 Works on any website through a Chrome/Edge side panel, using the AI provider of your choice. Bring your own API key or log in with an existing subscription (Anthropic Claude, OpenAI/ChatGPT, GitHub Copilot, Google Gemini, MiniMax). Your data stays on your machine.
 
-## Fork Changes
+## Project Highlights
 
-See [CHANGELOG.md](CHANGELOG.md) for the full list. Key additions over upstream Sitegeist:
+See [CHANGELOG.md](CHANGELOG.md) for the full list. Key additions in this repo:
 
 - **CLI-to-extension bridge** — external CLI agents can control the browser via `shuvgeist` commands
 - **WebP screenshot pipeline** — 95% smaller images for token-efficient LLM workflows
@@ -149,8 +149,8 @@ Clone this repo plus its sibling dependencies into the same parent directory:
 
 ```
 parent/
-  mini-lit/          # https://github.com/badlogic/mini-lit
-  pi-mono/           # https://github.com/badlogic/pi-mono
+  mini-lit/          # https://github.com/shuv1337/mini-lit
+  pi-mono/           # https://github.com/shuv1337/pi-mono
   shuvgeist/         # this repo
 ```
 
@@ -206,7 +206,7 @@ Runs formatting, linting, and type checking for the extension and the `site/` su
 
 ## Agent Skill
 
-A [Pi coding agent](https://github.com/badlogic/pi-mono) skill for Shuvgeist is included in `skills/shuvgeist/`. To activate it, symlink or copy it to your skills directory:
+A [Pi coding agent](https://github.com/shuv1337/pi-mono) skill for Shuvgeist is included in `skills/shuvgeist/`. To activate it, symlink or copy it to your skills directory:
 
 ```bash
 ln -s $(pwd)/skills/shuvgeist ~/.pi/agent/skills/shuvgeist

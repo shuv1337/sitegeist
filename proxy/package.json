@@ -1,7 +1,7 @@
 {
-  "name": "sitegeist-cors-proxy",
+  "name": "shuvgeist-cors-proxy",
   "version": "1.0.7",
-  "description": "Self-hosted CORS proxy for Sitegeist browser extension",
+  "description": "Self-hosted CORS proxy for Shuvgeist browser extension",
   "type": "module",
   "engines": {
     "node": ">=22"

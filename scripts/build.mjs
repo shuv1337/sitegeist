@@ -43,7 +43,7 @@ const buildOptions = {
 		global: "globalThis",
 	},
 	inject: [join(packageRoot, "scripts/process-shim.js")],
-	// Force all mini-lit and lit imports to resolve to sitegeist's node_modules
+	// Force all mini-lit and lit imports to resolve to shuvgeist's node_modules
 	alias: {
 		process: join(packageRoot, "scripts/process-shim.js"),
 		"@mariozechner/mini-lit": join(packageRoot, "node_modules/@mariozechner/mini-lit"),

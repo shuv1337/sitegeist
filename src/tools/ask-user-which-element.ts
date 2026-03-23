@@ -56,7 +56,7 @@ export type SelectElementResult = ElementInfo;
 // Extend Window interface for our custom property
 declare global {
 	interface Window {
-		__sitegeistElementPicker?: boolean;
+		__shuvgeistElementPicker?: boolean;
 	}
 }
 
@@ -67,16 +67,16 @@ declare global {
  */
 async function createElementPickerOverlay(message?: string) {
 	// Prevent multiple overlays
-	if (window.__sitegeistElementPicker) {
+	if (window.__shuvgeistElementPicker) {
 		throw new Error("Element picker is already active");
 	}
 
-	window.__sitegeistElementPicker = true;
+	window.__shuvgeistElementPicker = true;
 
 	return new Promise((resolve) => {
 		// Create overlay container
 		const overlay = document.createElement("div");
-		overlay.id = "sitegeist-element-picker";
+		overlay.id = "shuvgeist-element-picker";
 		overlay.style.cssText = `
 		position: fixed;
 		top: 0;
@@ -184,7 +184,7 @@ async function createElementPickerOverlay(message?: string) {
 				let selector = current.tagName.toLowerCase();
 
 				if (current.className && typeof current.className === "string") {
-					const classes = current.className.split(/\s+/).filter((c) => c && !c.startsWith("sitegeist-"));
+					const classes = current.className.split(/\s+/).filter((c) => c && !c.startsWith("shuvgeist-"));
 					if (classes.length > 0) {
 						selector += `.${classes.map((c) => CSS.escape(c)).join(".")}`;
 					}
@@ -451,10 +451,10 @@ async function createElementPickerOverlay(message?: string) {
 			document.removeEventListener("mousemove", handleMouseMove, true);
 			document.removeEventListener("click", handleClick, true);
 			document.removeEventListener("keydown", handleKeyDown, true);
-			window.removeEventListener("sitegeist-element-cancel", handleCancel);
+			window.removeEventListener("shuvgeist-element-cancel", handleCancel);
 			overlay.remove();
 			banner.remove();
-			delete window.__sitegeistElementPicker;
+			delete window.__shuvgeistElementPicker;
 		}
 
 		// Keyboard handler (ESC to cancel, Arrow keys to change depth)
@@ -506,7 +506,7 @@ async function createElementPickerOverlay(message?: string) {
 		}
 
 		// Listen for external cancel event (from abort signal)
-		window.addEventListener("sitegeist-element-cancel", handleCancel, {
+		window.addEventListener("shuvgeist-element-cancel", handleCancel, {
 			once: true,
 		});
 
@@ -582,7 +582,7 @@ export class AskUserWhichElementTool implements AgentTool<typeof selectElementSc
 							} else {
 								signal.addEventListener("abort", () => {
 									// Try to cleanup overlay when aborted
-									const cleanupCode = `window.dispatchEvent(new CustomEvent("sitegeist-element-cancel"));`;
+									const cleanupCode = `window.dispatchEvent(new CustomEvent("shuvgeist-element-cancel"));`;
 									chrome.userScripts
 										?.execute({
 											target: { tabId: tab.id!, allFrames: false },

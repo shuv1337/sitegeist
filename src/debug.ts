@@ -6,7 +6,7 @@ import { setAppStorage } from "@mariozechner/pi-web-ui";
 import { html, render } from "lit";
 import { ArrowLeft, Bug, MousePointer2, Play, Sparkles } from "lucide";
 import "./debug/ReplPanel.js";
-import { SitegeistAppStorage } from "./storage/app-storage.js";
+import { ShuvgeistAppStorage } from "./storage/app-storage.js";
 import { askUserWhichElementTool } from "./tools/ask-user-which-element.js";
 
 interface TestPrompt {
@@ -21,8 +21,8 @@ const models = [
 	getModel("openrouter", "z-ai/glm-4.6"),
 ];
 
-// Initialize AppStorage so tools relying on Sitegeist storage can operate in debug page
-const storage = new SitegeistAppStorage();
+// Initialize AppStorage so tools relying on Shuvgeist storage can operate in debug page
+const storage = new ShuvgeistAppStorage();
 setAppStorage(storage);
 
 const TEST_PROMPTS: TestPrompt[] = [

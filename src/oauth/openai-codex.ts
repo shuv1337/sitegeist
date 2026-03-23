@@ -52,7 +52,7 @@ export async function loginOpenAICodex(): Promise<OAuthCredentials> {
 	url.searchParams.set("state", state);
 	url.searchParams.set("id_token_add_organizations", "true");
 	url.searchParams.set("codex_cli_simplified_flow", "true");
-	url.searchParams.set("originator", "sitegeist");
+	url.searchParams.set("originator", "shuvgeist");
 
 	const redirectUrl = await waitForOAuthRedirect(url.toString(), REDIRECT_HOST);
 

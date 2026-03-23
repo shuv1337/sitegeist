@@ -1,4 +1,4 @@
-# Sitegeist Database & Subscription Architecture
+# Shuvgeist Database & Subscription Architecture
 
 **Date:** 2025-10-24
 **Status:** Architecture Design Phase
@@ -20,11 +20,11 @@
 ## Requirements
 
 ### User Flow
-1. **Installation** - User installs Sitegeist browser extension
+1. **Installation** - User installs Shuvgeist browser extension
 2. **Authentication** - If not logged in, user is prompted to log in or create account (email + password)
 3. **Email Verification** - Account creation requires one-time code via email for verification
-4. **Trial Period** - New accounts get $1.00 in token credits with Sitegeist-provided Haiku model
-   - **No BYOK required during trial** - Sitegeist handles API keys and model access
+4. **Trial Period** - New accounts get $1.00 in token credits with Shuvgeist-provided Haiku model
+   - **No BYOK required during trial** - Shuvgeist handles API keys and model access
    - Extension sends requests to backend, which proxies to AI provider
    - Server tracks token usage in dollars but **NOT message content** (privacy-first)
    - Usage deducted per request: prompt tokens + completion tokens = cost in credits
@@ -32,7 +32,7 @@
 5. **Paywall** - After $1.00 credits exhausted, user is presented with subscription option ($5-10/month)
 6. **Payment** - Subscription action redirects to payment provider (Stripe/LemonSqueezy/Paddle)
 7. **Status Sync** - Extension polls server for subscription status until payment completes or is cancelled
-8. **Post-Payment** - Paid users can use BYOK or continue with Sitegeist-provided models (unlimited)
+8. **Post-Payment** - Paid users can use BYOK or continue with Shuvgeist-provided models (unlimited)
 
 ### Data Storage Requirements
 Per-user data on server:
@@ -71,7 +71,7 @@ Region: Germany (Hetzner)
 - **≈70% RAM capacity unused**
 
 **Can Easily Support:**
-- 50,000+ Sitegeist users
+- 50,000+ Shuvgeist users
 - No performance impact on existing services
 - Zero additional hosting cost
 
@@ -113,9 +113,9 @@ class FileStore<T> {
 ./run.sh logs        # docker compose logs -f
 ```
 
-**Server Location:** `/home/badlogic/sitegeist.ai`
+**Server Location:** `/home/shuv1337/geist.shuv.ai`
 
-**Reverse Proxy:** Caddy with automatic HTTPS (sitegeist.ai)
+**Reverse Proxy:** Caddy with automatic HTTPS (geist.shuv.ai)
 
 ---
 
@@ -159,8 +159,8 @@ services:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_DB: sitegeist
-      POSTGRES_USER: sitegeist
+      POSTGRES_DB: shuvgeist
+      POSTGRES_USER: shuvgeist
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -180,7 +180,7 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: sitegeist_dev
+      POSTGRES_DB: shuvgeist_dev
       POSTGRES_PASSWORD: dev
 ```
 
@@ -290,13 +290,13 @@ Payments:  Stripe (most popular) or Paddle (EU-friendly)
 If you grow beyond server capacity or want managed services later:
 ```bash
 # 1. Export from PostgreSQL
-pg_dump sitegeist > backup.sql
+pg_dump shuvgeist > backup.sql
 
 # 2. Import to managed service (Neon/Railway)
 psql $NEW_DATABASE_URL < backup.sql
 
 # 3. Update environment variable
-DATABASE_URL=postgresql://new-host/sitegeist
+DATABASE_URL=postgresql://new-host/shuvgeist
 
 # 4. Done - zero code changes
 ```
@@ -309,7 +309,7 @@ DATABASE_URL=postgresql://new-host/sitegeist
 
 Since trial users don't provide their own API keys (BYOK), the backend must proxy AI requests to Anthropic on their behalf. This requires:
 
-1. **Server-side API key management** - Store Sitegeist API keys securely
+1. **Server-side API key management** - Store Shuvgeist API keys securely
 2. **Request proxying** - Forward extension requests to Anthropic API
 3. **Token usage tracking** - Calculate costs and deduct from user credits
 4. **Credit enforcement** - Prevent usage when credits exhausted
@@ -337,7 +337,7 @@ Since trial users don't provide their own API keys (BYOK), the backend must prox
 └────────┬────────────────────────────────────┘
          │
          │ POST https://api.anthropic.com/v1/messages
-         │ x-api-key: <sitegeist_api_key>
+         │ x-api-key: <shuvgeist_api_key>
          │ { messages: [...], model: "claude-3-haiku-20240307" }
          ↓
 ┌─────────────────┐
@@ -717,8 +717,8 @@ Response:
 Flow:
 1. Authenticate user from JWT
 2. Check subscription plan:
-   - If 'trial': Use Sitegeist API keys, check credits > 0
-   - If 'paid': Use user's BYOK or Sitegeist keys (unlimited)
+   - If 'trial': Use Shuvgeist API keys, check credits > 0
+   - If 'paid': Use user's BYOK or Shuvgeist keys (unlimited)
    - If 'expired': Return 402 Payment Required
 3. Forward request to AI provider (Anthropic)
 4. Calculate cost based on usage:
@@ -932,7 +932,7 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: sitegeist_dev
+      POSTGRES_DB: shuvgeist_dev
       POSTGRES_USER: dev
       POSTGRES_PASSWORD: dev
     volumes:
@@ -964,7 +964,7 @@ import pg from 'pg';
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL ||
-    'postgresql://dev:dev@localhost:5432/sitegeist_dev'
+    'postgresql://dev:dev@localhost:5432/shuvgeist_dev'
 });
 
 export const db = drizzle(pool);
@@ -978,7 +978,7 @@ export default {
   dialect: 'postgresql',
   dbCredentials: {
     url: process.env.DATABASE_URL ||
-      'postgresql://dev:dev@localhost:5432/sitegeist_dev'
+      'postgresql://dev:dev@localhost:5432/shuvgeist_dev'
   }
 } satisfies Config;
 ```
@@ -1079,12 +1079,12 @@ export async function sendVerificationEmail(
   code: string
 ): Promise<void> {
   await transporter.sendMail({
-    from: 'noreply@sitegeist.ai',
+    from: 'noreply@geist.shuv.ai',
     to: email,
-    subject: 'Verify your Sitegeist account',
+    subject: 'Verify your Shuvgeist account',
     text: `Your verification code is: ${code}\n\nThis code expires in 15 minutes.`,
     html: `
-      <h1>Welcome to Sitegeist!</h1>
+      <h1>Welcome to Shuvgeist!</h1>
       <p>Your verification code is:</p>
       <h2>${code}</h2>
       <p>This code expires in 15 minutes.</p>
@@ -1292,8 +1292,8 @@ export async function createCheckoutSession(
       price: process.env.STRIPE_PRICE_ID!, // Create in Stripe dashboard
       quantity: 1
     }],
-    success_url: 'https://sitegeist.ai/success',
-    cancel_url: 'https://sitegeist.ai/cancel',
+    success_url: 'https://geist.shuv.ai/success',
+    cancel_url: 'https://geist.shuv.ai/cancel',
     metadata: { userId }
   });
 
@@ -1369,8 +1369,8 @@ services:
     image: postgres:16
     restart: unless-stopped
     environment:
-      POSTGRES_DB: sitegeist
-      POSTGRES_USER: sitegeist
+      POSTGRES_DB: shuvgeist
+      POSTGRES_USER: shuvgeist
       POSTGRES_PASSWORD_FILE: /run/secrets/db_password
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -1385,7 +1385,7 @@ services:
   backend:
     # ... existing config
     environment:
-      - DATABASE_URL=postgresql://sitegeist:${DB_PASSWORD}@postgres:5432/sitegeist
+      - DATABASE_URL=postgresql://shuvgeist:${DB_PASSWORD}@postgres:5432/shuvgeist
       - JWT_SECRET_FILE=/run/secrets/jwt_secret
       - ANTHROPIC_API_KEY_FILE=/run/secrets/anthropic_api_key
       - STRIPE_SECRET_KEY_FILE=/run/secrets/stripe_secret
@@ -1416,7 +1416,7 @@ volumes:
 ```bash
 ssh slayer.marioslab.io
 
-cd /home/badlogic/sitegeist.ai/infra
+cd /home/shuv1337/geist.shuv.ai/infra
 mkdir -p secrets
 
 # Generate secure passwords
@@ -1435,7 +1435,7 @@ chmod 600 secrets/*
 ```bash
 # In Stripe dashboard:
 # 1. Go to Developers → Webhooks
-# 2. Add endpoint: https://sitegeist.ai/webhooks/stripe
+# 2. Add endpoint: https://geist.shuv.ai/webhooks/stripe
 # 3. Select events:
 #    - checkout.session.completed
 #    - customer.subscription.updated
@@ -1453,7 +1453,7 @@ cd site
 # On server, migrations run automatically on first start
 # Or manually:
 ssh slayer.marioslab.io
-cd /home/badlogic/sitegeist.ai
+cd /home/shuv1337/geist.shuv.ai
 docker compose -f infra/docker-compose.yml exec backend \
   npx drizzle-kit migrate
 ```
@@ -1462,27 +1462,27 @@ docker compose -f infra/docker-compose.yml exec backend \
 ```bash
 # On slayer.marioslab.io
 # Create backup script
-cat > /home/badlogic/sitegeist.ai/backup.sh <<'EOF'
+cat > /home/shuv1337/geist.shuv.ai/backup.sh <<'EOF'
 #!/bin/bash
-BACKUP_DIR=/home/badlogic/backups/sitegeist
+BACKUP_DIR=/home/shuv1337/backups/shuvgeist
 DATE=$(date +%Y%m%d_%H%M%S)
 
 mkdir -p $BACKUP_DIR
 
 # Backup PostgreSQL
-docker compose -f /home/badlogic/sitegeist.ai/infra/docker-compose.yml \
-  exec -T postgres pg_dump -U sitegeist sitegeist \
+docker compose -f /home/shuv1337/geist.shuv.ai/infra/docker-compose.yml \
+  exec -T postgres pg_dump -U shuvgeist shuvgeist \
   | gzip > $BACKUP_DIR/db_$DATE.sql.gz
 
 # Keep last 30 days
 find $BACKUP_DIR -type f -mtime +30 -delete
 EOF
 
-chmod +x /home/badlogic/sitegeist.ai/backup.sh
+chmod +x /home/shuv1337/geist.shuv.ai/backup.sh
 
 # Add to crontab (daily at 3am)
 crontab -e
-# Add: 0 3 * * * /home/badlogic/sitegeist.ai/backup.sh
+# Add: 0 3 * * * /home/shuv1337/geist.shuv.ai/backup.sh
 ```
 
 ---
@@ -1510,7 +1510,7 @@ export const authStore = new Store<AuthState>('auth', {
 **2. API client**
 ```typescript
 // src/api/client.ts
-const API_BASE = 'https://sitegeist.ai/api';
+const API_BASE = 'https://geist.shuv.ai/api';
 
 export class ApiClient {
   private token: string | null = null;
@@ -1646,7 +1646,7 @@ export class PaywallDialog {
     const result = await showDialog({
       title: 'Trial Credits Exhausted',
       message: `You've used your $1.00 trial credits.
-                Upgrade to continue using Sitegeist with your own API keys.`,
+                Upgrade to continue using Shuvgeist with your own API keys.`,
       buttons: [
         { label: 'Upgrade ($9/month)', value: 'upgrade' },
         { label: 'Not Now', value: 'cancel' }
@@ -1834,7 +1834,7 @@ Payments (Required):
 - LemonSqueezy: 5% per transaction
 
 Domain (Existing):
-- sitegeist.ai: Already registered
+- geist.shuv.ai: Already registered
 
 SSL Certificate:
 - $0 (Caddy handles Let's Encrypt automatically)
@@ -2036,7 +2036,7 @@ After payback period, each user generates $8.34/month profit indefinitely.
 ### Legal & Privacy
 12. **Data Retention:** Keep expired trial users in database? For how long?
 13. **GDPR:** Need user data export/deletion endpoints? (Probably yes for EU)
-14. **Terms of Service:** Trial users agree that Sitegeist proxies their requests through Anthropic?
+14. **Terms of Service:** Trial users agree that Shuvgeist proxies their requests through Anthropic?
 15. **Privacy Policy:** Clarify that message content is never stored, only aggregate token counts
 
 ### Business

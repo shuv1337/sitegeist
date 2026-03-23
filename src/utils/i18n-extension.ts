@@ -15,7 +15,7 @@ declare module "@mariozechner/mini-lit" {
 		Delete: string;
 		"Loading...": string;
 
-		// Sitegeist extension keys
+		// Shuvgeist extension keys
 		"Permission request failed": string;
 		"JavaScript Execution Permission Required": string;
 		"This extension needs permission to execute JavaScript code on web pages": string;
@@ -96,7 +96,7 @@ declare module "@mariozechner/mini-lit" {
 	}
 }
 
-const sitegeistTranslations = {
+const shuvgeistTranslations = {
 	en: {
 		"Permission request failed": "Permission request failed",
 		"JavaScript Execution Permission Required": "JavaScript Execution Permission Required",
@@ -281,10 +281,10 @@ const sitegeistTranslations = {
 	},
 };
 
-// Merge web-ui translations with sitegeist translations
+// Merge web-ui translations with shuvgeist translations
 const mergedTranslations = {
-	en: { ...webUiTranslations.en, ...sitegeistTranslations.en },
-	de: { ...webUiTranslations.de, ...sitegeistTranslations.de },
+	en: { ...webUiTranslations.en, ...shuvgeistTranslations.en },
+	de: { ...webUiTranslations.de, ...shuvgeistTranslations.de },
 };
 
 setTranslations(mergedTranslations);

@@ -47,7 +47,7 @@ import { ApiKeysOAuthTab } from "./dialogs/ApiKeysOAuthTab.js";
 import { BridgeTab, setBridgeSettingsChangeCallback, setBridgeStateForTab } from "./dialogs/BridgeTab.js";
 import { CostsTab } from "./dialogs/CostsTab.js";
 import { SessionCostDialog } from "./dialogs/SessionCostDialog.js";
-import { SitegeistSessionListDialog } from "./dialogs/SessionListDialog.js";
+import { ShuvgeistSessionListDialog } from "./dialogs/SessionListDialog.js";
 import { SkillsTab } from "./dialogs/SkillsTab.js";
 import { UpdateNotificationDialog } from "./dialogs/UpdateNotificationDialog.js";
 import { UserScriptsPermissionDialog } from "./dialogs/UserScriptsPermissionDialog.js";
@@ -62,7 +62,7 @@ import { registerUserMessageRenderer } from "./messages/UserMessageRenderer.js";
 import { createWelcomeMessage, registerWelcomeRenderer } from "./messages/WelcomeMessage.js";
 import { isOAuthCredentials, resolveApiKey } from "./oauth/index.js";
 import { SYSTEM_PROMPT } from "./prompts/prompts.js";
-import { SitegeistAppStorage } from "./storage/app-storage.js";
+import { ShuvgeistAppStorage } from "./storage/app-storage.js";
 import { DebuggerTool } from "./tools/debugger.js";
 import { ExtractImageTool, registerExtractImageRenderer } from "./tools/extract-image.js";
 import { AskUserWhichElementTool, skillTool } from "./tools/index.js";
@@ -99,7 +99,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // ============================================================================
 // STORAGE SETUP
 // ============================================================================
-const storage = new SitegeistAppStorage();
+const storage = new ShuvgeistAppStorage();
 setAppStorage(storage);
 
 // ============================================================================
@@ -1079,7 +1079,7 @@ const renderApp = () => {
 						size: "sm",
 						children: icon(History, "sm"),
 						onClick: () => {
-							SitegeistSessionListDialog.open(
+							ShuvgeistSessionListDialog.open(
 								(sessionId: string) => {
 									loadSession(sessionId);
 								},
@@ -1376,7 +1376,7 @@ async function checkForUpdates() {
 		const currentVersion = chrome.runtime.getManifest().version;
 
 		// Fetch latest version
-		const response = await fetch("https://sitegeist.ai/uploads/version.json", {
+		const response = await fetch("https://geist.shuv.ai/uploads/version.json", {
 			cache: "no-cache",
 		});
 		const data = await response.json();

@@ -8,7 +8,7 @@ import { Loader2 } from "lucide";
 import { SkillPill } from "../components/SkillPill.js";
 import { TabPill } from "../components/TabPill.js";
 import { NAVIGATE_TOOL_DESCRIPTION } from "../prompts/prompts.js";
-import { getSitegeistStorage } from "../storage/app-storage.js";
+import { getShuvgeistStorage } from "../storage/app-storage.js";
 import type { Skill } from "../storage/stores/skills-store.js";
 import { formatSkills } from "../utils/format-skills.js";
 import "../utils/i18n-extension.js";
@@ -136,7 +136,7 @@ export class NavigateTool implements AgentTool<typeof navigateSchema, NavigateRe
 		const favicon = updatedTab?.favIconUrl;
 
 		// Get skills for the final URL
-		const skillsRepo = getSitegeistStorage().skills;
+		const skillsRepo = getShuvgeistStorage().skills;
 		const matchingSkills = await skillsRepo.getSkillsForUrl(finalUrl);
 		const { newOrUpdated, unchanged, formattedText: skillsOutput } = formatSkills(matchingSkills);
 
@@ -314,7 +314,7 @@ export class NavigateTool implements AgentTool<typeof navigateSchema, NavigateRe
 		const favicon = tab.favIconUrl;
 
 		// Get skills for the tab's URL
-		const skillsRepo = getSitegeistStorage().skills;
+		const skillsRepo = getShuvgeistStorage().skills;
 		const matchingSkills = finalUrl ? await skillsRepo.getSkillsForUrl(finalUrl) : [];
 		const { newOrUpdated, unchanged, formattedText: skillsOutput } = formatSkills(matchingSkills);
 

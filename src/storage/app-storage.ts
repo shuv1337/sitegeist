@@ -8,13 +8,13 @@ import {
 	SettingsStore,
 } from "@mariozechner/pi-web-ui";
 import { CostStore } from "./stores/cost-store.js";
-import { SitegeistSessionsStore } from "./stores/sessions-store.js";
+import { ShuvgeistSessionsStore } from "./stores/sessions-store.js";
 import { SkillsStore } from "./stores/skills-store.js";
 
 /**
- * Extended AppStorage for Sitegeist with skills, memories, and prompts stores.
+ * Extended AppStorage for Shuvgeist with skills, memories, and prompts stores.
  */
-export class SitegeistAppStorage extends BaseAppStorage {
+export class ShuvgeistAppStorage extends BaseAppStorage {
 	readonly skills: SkillsStore;
 	readonly costs: CostStore;
 
@@ -22,7 +22,7 @@ export class SitegeistAppStorage extends BaseAppStorage {
 		// 1. Create all stores (no backend yet)
 		const settings = new SettingsStore();
 		const providerKeys = new ProviderKeysStore();
-		const sessions = new SitegeistSessionsStore();
+		const sessions = new ShuvgeistSessionsStore();
 		const customProviders = new CustomProvidersStore();
 		const skills = new SkillsStore();
 		const costs = new CostStore();
@@ -40,7 +40,7 @@ export class SitegeistAppStorage extends BaseAppStorage {
 
 		// 3. Create backend with all configs
 		const backend = new IndexedDBStorageBackend({
-			dbName: "sitegeist-storage",
+			dbName: "shuvgeist-storage",
 			version: 3, // Increment version to add custom-providers store
 			stores: configs,
 		});
@@ -56,15 +56,15 @@ export class SitegeistAppStorage extends BaseAppStorage {
 		// 5. Pass base stores to parent
 		super(settings, providerKeys, sessions, customProviders, backend);
 
-		// 6. Store references to sitegeist-specific stores
+		// 6. Store references to shuvgeist-specific stores
 		this.skills = skills;
 		this.costs = costs;
 	}
 }
 
 /**
- * Helper to get typed Sitegeist storage.
+ * Helper to get typed Shuvgeist storage.
  */
-export function getSitegeistStorage(): SitegeistAppStorage {
-	return getAppStorage() as SitegeistAppStorage;
+export function getShuvgeistStorage(): ShuvgeistAppStorage {
+	return getAppStorage() as ShuvgeistAppStorage;
 }

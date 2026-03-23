@@ -4,8 +4,8 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-SERVER=slayer.marioslab.io
-SERVER_DIR=/home/badlogic/sitegeist.ai
+SERVER=${SERVER:-slayer.marioslab.io}
+SERVER_DIR=${SERVER_DIR:-}
 
 case "$1" in
 dev)
@@ -20,6 +20,11 @@ build)
     ;;
 
 deploy)
+    if [ -z "$SERVER_DIR" ]; then
+        echo "Set SERVER_DIR to the remote deployment directory before using deploy."
+        exit 1
+    fi
+
     npm install
     npx vite build --config infra/vite.config.ts
 

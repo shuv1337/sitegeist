@@ -1,8 +1,8 @@
 /**
- * Sitegeist CORS Proxy
+ * Shuvgeist CORS Proxy
  *
  * Forwards browser extension requests to upstream provider endpoints that
- * enforce CORS restrictions. Supports the Sitegeist contract:
+ * enforce CORS restrictions. Supports the Shuvgeist contract:
  *
  *   GET|POST|OPTIONS /?url=<encoded-target-url>
  *

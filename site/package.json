@@ -1,7 +1,7 @@
 {
-	"name": "sitegeist-site",
+	"name": "shuvgeist-site",
 	"version": "1.0.7",
-	"description": "Sitegeist landing page",
+	"description": "Shuvgeist landing page",
 	"type": "module",
 	"scripts": {
 		"dev": "./run.sh dev",

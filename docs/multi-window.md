@@ -2,7 +2,7 @@
 
 ## Overview
 
-Sitegeist implements window-scoped session locking using Chrome's port API to prevent the same session from being open in multiple windows simultaneously. Each session can only be active in one window at a time.
+Shuvgeist implements window-scoped session locking using Chrome's port API to prevent the same session from being open in multiple windows simultaneously. Each session can only be active in one window at a time.
 
 ## Behavior
 

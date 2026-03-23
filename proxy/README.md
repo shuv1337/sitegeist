@@ -1,6 +1,6 @@
-# Sitegeist CORS Proxy
+# Shuvgeist CORS Proxy
 
-A small self-hosted proxy service that lets the Sitegeist browser extension reach
+A small self-hosted proxy service that lets the Shuvgeist browser extension reach
 provider endpoints that enforce CORS restrictions on direct browser requests.
 
 The proxy is intentionally minimal: it filters headers, restricts upstream targets
@@ -8,7 +8,7 @@ to a configurable allowlist, and never logs credentials or request bodies.
 
 ## Why this exists
 
-Several provider endpoints that Sitegeist needs cannot be called directly from a
+Several provider endpoints that Shuvgeist needs cannot be called directly from a
 browser extension due to CORS policy:
 
 | Provider | Flow |
@@ -24,7 +24,7 @@ so the browser extension can receive the response.
 
 ## Request format
 
-Sitegeist sends all proxied requests as:
+Shuvgeist sends all proxied requests as:
 
 ```
 GET|POST|OPTIONS /?url=<percent-encoded-upstream-url>
@@ -126,9 +126,9 @@ ALLOWED_HOSTS=platform.claude.com,api.anthropic.com,github.com,api.z.ai,chatgpt.
 Only exact hostname matches are checked (no wildcards). Paths and ports within an
 allowed host are not further restricted.
 
-## Configuring Sitegeist to use this proxy
+## Configuring Shuvgeist to use this proxy
 
-1. Open the Sitegeist side panel.
+1. Open the Shuvgeist side panel.
 2. Go to **Settings → API Keys / OAuth**.
 3. Find the **CORS Proxy** section.
 4. Enable the proxy and set the URL to your proxy's base URL, for example:
@@ -143,7 +143,7 @@ allowed host are not further restricted.
    https://proxy.your-domain.com
    ```
 
-   Do **not** include a trailing slash or path. Sitegeist appends `/?url=…` itself.
+   Do **not** include a trailing slash or path. Shuvgeist appends `/?url=…` itself.
 
 If `PROXY_SECRET` is configured on the proxy, you need to pass it from the extension.
 Currently the extension does not send a custom header by default, so `PROXY_SECRET`
@@ -160,7 +160,7 @@ Recommended setup:
 3. Expose only the TLS port publicly.
 4. Set `PROXY_SECRET` or restrict access via your reverse proxy / firewall if
    the endpoint is publicly reachable.
-5. Set `ALLOWED_HOSTS` to exactly the hosts Sitegeist needs — no broader.
+5. Set `ALLOWED_HOSTS` to exactly the hosts Shuvgeist needs — no broader.
 
 Example Caddyfile snippet:
 

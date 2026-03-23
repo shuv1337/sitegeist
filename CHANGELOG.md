@@ -47,7 +47,7 @@
 - Screenshot `captureVisibleTab` failing with `<all_urls>` permission error on bridge-initiated captures
 - Screenshot `fetch()` on data URLs failing in recent Chrome versions (manual base64-to-Blob conversion)
 - Live-reload WebSocket spam in production builds (gated behind `NODE_ENV === "development"`)
-- False "Update Available" notification comparing against upstream sitegeist version
+- False "Update Available" notification comparing against upstream shuvgeist version
 
 ### Removed
 

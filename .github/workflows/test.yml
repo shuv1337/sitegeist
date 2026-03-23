@@ -17,10 +17,10 @@ jobs:
           node-version: 22
 
       - name: Clone mini-lit
-        run: git clone --depth 1 https://github.com/badlogic/mini-lit.git ../mini-lit
+        run: git clone --depth 1 https://github.com/shuv1337/mini-lit.git ../mini-lit
 
       - name: Clone pi-mono
-        run: git clone --depth 1 https://github.com/badlogic/pi-mono.git ../pi-mono
+        run: git clone --depth 1 https://github.com/shuv1337/pi-mono.git ../pi-mono
 
       - name: Install mini-lit
         run: cd ../mini-lit && npm install && npm run build
@@ -47,10 +47,10 @@ jobs:
           node-version: 22
 
       - name: Clone mini-lit
-        run: git clone --depth 1 https://github.com/badlogic/mini-lit.git ../mini-lit
+        run: git clone --depth 1 https://github.com/shuv1337/mini-lit.git ../mini-lit
 
       - name: Clone pi-mono
-        run: git clone --depth 1 https://github.com/badlogic/pi-mono.git ../pi-mono
+        run: git clone --depth 1 https://github.com/shuv1337/pi-mono.git ../pi-mono
 
       - name: Install mini-lit
         run: cd ../mini-lit && npm install && npm run build
@@ -112,10 +112,10 @@ jobs:
           node-version: 22
 
       - name: Clone mini-lit
-        run: git clone --depth 1 https://github.com/badlogic/mini-lit.git ../mini-lit
+        run: git clone --depth 1 https://github.com/shuv1337/mini-lit.git ../mini-lit
 
       - name: Clone pi-mono
-        run: git clone --depth 1 https://github.com/badlogic/pi-mono.git ../pi-mono
+        run: git clone --depth 1 https://github.com/shuv1337/pi-mono.git ../pi-mono
 
       - name: Install mini-lit
         run: cd ../mini-lit && npm install && npm run build

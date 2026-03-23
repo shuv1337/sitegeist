@@ -358,13 +358,13 @@ Call on app startup before any model selection happens.
 - Temporarily register discovered models with `registerProviderModels()`
 - Display in selector alongside known + manual providers
 
-### 7. Sitegeist Integration
+### 7. Shuvgeist Integration
 
-**Update: `sitegeist/src/sidepanel.ts`**
+**Update: `shuvgeist/src/sidepanel.ts`**
 - Import: `import { ProvidersModelsTab } from "@mariozechner/pi-web-ui"`
 - Update SettingsDialog to use new tab name
 
-**Update: `sitegeist/src/storage/app-storage.ts`**
+**Update: `shuvgeist/src/storage/app-storage.ts`**
 - Ensure extended storage includes new custom provider/model stores
 
 ### 8. Testing

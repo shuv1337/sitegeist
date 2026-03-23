@@ -4,7 +4,7 @@ import { type SessionData, SessionsStore } from "@mariozechner/pi-web-ui";
 /**
  * Extended SessionsStore that migrates old tool result messages from output to content format.
  */
-export class SitegeistSessionsStore extends SessionsStore {
+export class ShuvgeistSessionsStore extends SessionsStore {
 	async loadSession(id: string): Promise<SessionData | null> {
 		const session = await super.loadSession(id);
 		if (session) {

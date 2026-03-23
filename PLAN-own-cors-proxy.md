@@ -1,11 +1,11 @@
-# Plan: Run Our Own CORS Proxy for Sitegeist
+# Plan: Run Our Own CORS Proxy for Shuvgeist
 
 ## Objective
 
-Replace the default third-party proxy dependency with an operator-controlled CORS proxy that supports Sitegeist's browser-based auth and fetch flows.
+Replace the default third-party proxy dependency with an operator-controlled CORS proxy that supports Shuvgeist's browser-based auth and fetch flows.
 
 This plan covers:
-- the current proxy usage in Sitegeist
+- the current proxy usage in Shuvgeist
 - the required proxy contract
 - a secure self-hosted implementation approach
 - deployment/integration steps
@@ -15,7 +15,7 @@ This is a plan only. No implementation is included here.
 
 ## TL;DR
 
-Sitegeist needs a proxy because some provider endpoints do not allow browser-origin requests via CORS. The proxy is not Helium-specific; it is a generic browser-to-provider bridge.
+Shuvgeist needs a proxy because some provider endpoints do not allow browser-origin requests via CORS. The proxy is not Helium-specific; it is a generic browser-to-provider bridge.
 
 We should stand up a small authenticated proxy service that accepts requests in the existing format:
 
@@ -27,7 +27,7 @@ Then we should:
 - restrict it to approved upstream hosts
 - avoid logging credentials/bodies
 - add basic telemetry, rate limiting, and timeouts
-- point Sitegeist at the new proxy URL
+- point Shuvgeist at the new proxy URL
 - test Anthropic OAuth, GitHub Copilot OAuth, proxied model calls, and document extraction fallback
 
 ## Current State Review
@@ -104,7 +104,7 @@ The proxy should:
 
 ## Compatibility requirements
 
-The proxy must remain compatible with the current Sitegeist code path, which expects:
+The proxy must remain compatible with the current Shuvgeist code path, which expects:
 
 ```text
 ${proxyUrl}/?url=${encodeURIComponent(targetUrl)}
@@ -161,7 +161,7 @@ For initial deployment, a shared secret header plus infra-level network protecti
 
 ## 1. Host allowlist
 
-Restrict outbound requests to a curated set of upstream hosts required by Sitegeist.
+Restrict outbound requests to a curated set of upstream hosts required by Shuvgeist.
 
 Initial likely allowlist:
 - `platform.claude.com`
@@ -326,9 +326,9 @@ Telemetry must not contain:
 - [ ] configure resource limits
 - [ ] add alerting for error-rate spikes or downtime
 
-## Phase 4: Integrate Sitegeist with the new proxy
+## Phase 4: Integrate Shuvgeist with the new proxy
 
-### 4.1 Configure proxy in Sitegeist settings
+### 4.1 Configure proxy in Shuvgeist settings
 - [ ] Set `proxy.url` to our proxy base URL in the app
 - [ ] Keep format compatible with current code (`/?url=` added client-side)
 - [ ] Ensure `proxy.enabled` behavior is documented clearly
@@ -363,7 +363,7 @@ Relevant files:
 - [ ] Test allowlist rejection path
 - [ ] Test timeout behavior
 
-### 5.2 Sitegeist integration validation
+### 5.2 Shuvgeist integration validation
 - [ ] Anthropic OAuth login succeeds using our proxy
 - [ ] Anthropic token refresh succeeds using our proxy
 - [ ] GitHub Copilot device code flow succeeds using our proxy
@@ -380,12 +380,12 @@ Relevant files:
 
 ### 6.1 Internal rollout
 - [ ] Deploy proxy in non-public/internal environment first
-- [ ] configure Sitegeist test install to use it
+- [ ] configure Shuvgeist test install to use it
 - [ ] run smoke tests with real provider accounts
 
 ### 6.2 Production rollout
 - [ ] deploy production proxy endpoint
-- [ ] switch Sitegeist default config or operator instructions to new proxy
+- [ ] switch Shuvgeist default config or operator instructions to new proxy
 - [ ] monitor telemetry for auth failures, timeout spikes, and upstream host mismatches
 
 ### 6.3 Cleanup
@@ -405,7 +405,7 @@ Relevant files:
 - [ ] `proxy-service/Dockerfile`
 - [ ] `proxy-service/README.md`
 
-### Sitegeist changes
+### Shuvgeist changes
 - [ ] `docs/proxy.md`
 - [ ] `src/dialogs/ApiKeysOAuthTab.ts`
 - [ ] `src/dialogs/ApiKeyOrOAuthDialog.ts`
@@ -436,7 +436,7 @@ Recommendation:
 
 ## Acceptance Criteria
 
-- [ ] We control the proxy infrastructure used by Sitegeist
+- [ ] We control the proxy infrastructure used by Shuvgeist
 - [ ] The proxy supports the current `/?url=<target-url>` contract
 - [ ] Anthropic OAuth works through our proxy
 - [ ] GitHub Copilot OAuth works through our proxy
@@ -450,7 +450,7 @@ Recommendation:
 1. audit exact upstream hosts currently needed
 2. build minimal authenticated allowlisted proxy
 3. deploy it in a test environment
-4. point Sitegeist settings at it
+4. point Shuvgeist settings at it
 5. validate OAuth + proxied runtime flows
 6. update docs and default configuration
 7. roll out broadly

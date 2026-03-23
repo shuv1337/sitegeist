@@ -3,7 +3,7 @@ import { registerMessageRenderer } from "@mariozechner/pi-web-ui";
 import { html, LitElement, type TemplateResult } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { SkillPill } from "../components/SkillPill.js";
-import { getSitegeistStorage } from "../storage/app-storage.js";
+import { getShuvgeistStorage } from "../storage/app-storage.js";
 import type { Skill } from "../storage/stores/skills-store.js";
 import { formatSkills } from "../utils/format-skills.js";
 
@@ -54,7 +54,7 @@ export class NavigationMessageElement extends LitElement {
 	override async connectedCallback() {
 		super.connectedCallback();
 		// Load skills for this URL
-		const skillsRepo = getSitegeistStorage().skills;
+		const skillsRepo = getShuvgeistStorage().skills;
 		this.skills = await skillsRepo.getSkillsForUrl(this.url);
 	}
 
@@ -124,7 +124,7 @@ export async function createNavigationMessage(
 	tabId?: number,
 ): Promise<NavigationMessage> {
 	// Get skills for this URL and format them
-	const skillsRepo = getSitegeistStorage().skills;
+	const skillsRepo = getShuvgeistStorage().skills;
 	const matchingSkills = await skillsRepo.getSkillsForUrl(url);
 	const { formattedText: skillsOutput } = formatSkills(matchingSkills);
 

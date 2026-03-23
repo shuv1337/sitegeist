@@ -150,7 +150,7 @@ Provides `browserjs(fn, ...args)` to REPL scripts. Executes functions in the act
 7. Result is serialized back through the runtime message channel
 
 **Key details:**
-- Uses a fixed `worldId: "sitegeist-browser-script"` for all executions
+- Uses a fixed `worldId: "shuvgeist-browser-script"` for all executions
 - Configures CSP on the userScript world to block network/media access
 - Supports `chrome.userScripts.terminate()` for cancellation (Chrome 138+)
 - Injects `ConsoleRuntimeProvider` for each execution to capture page console output
@@ -302,7 +302,7 @@ When detected (and not caused by the navigate tool), a `NavigationMessage` is in
 
 ## Storage (`src/storage/`)
 
-All data is stored locally in IndexedDB via `SitegeistAppStorage`:
+All data is stored locally in IndexedDB via `ShuvgeistAppStorage`:
 
 | Store | Contents |
 |-------|----------|
@@ -405,7 +405,7 @@ src/
 │       ├── overlay-content.ts       Overlay HTML/CSS/JS content
 │       └── userscripts-helpers.ts   Wrapper code generation for userScripts
 ├── storage/
-│   ├── app-storage.ts              SitegeistAppStorage (all stores)
+│   ├── app-storage.ts              ShuvgeistAppStorage (all stores)
 │   └── stores/
 │       ├── sessions-store.ts        Session persistence
 │       ├── skills-store.ts          Skills with domain matching

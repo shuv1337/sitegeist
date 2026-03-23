@@ -2,7 +2,7 @@
 
 ## Overview
 
-Sitegeist uses a **CORS Proxy** to handle Cross-Origin Resource Sharing restrictions for:
+Shuvgeist uses a **CORS Proxy** to handle Cross-Origin Resource Sharing restrictions for:
 
 1. **LLM API calls** - When providers block direct browser requests
 2. **Document extraction** - When websites block automated downloads from extensions
@@ -60,7 +60,7 @@ Without a CORS proxy, these requests would fail in the browser environment.
 
 ### File Structure
 
-#### Sitegeist (Extension)
+#### Shuvgeist (Extension)
 
 - **`src/sidepanel.ts`**:
   - Lines 236-237: Loads proxy settings from storage
@@ -84,7 +84,7 @@ Without a CORS proxy, these requests would fail in the browser environment.
   - **Behavior**: Only Z-AI and Anthropic OAuth tokens use proxy; OpenAI, Google, Groq, OpenRouter, Cerebras, xAI, Ollama, LM Studio connect directly
 
 - **`src/tools/extract-document.ts`**:
-  - Tool has optional `corsProxyUrl` property set by Sitegeist if proxy is enabled
+  - Tool has optional `corsProxyUrl` property set by Shuvgeist if proxy is enabled
   - Implements try-first-fallback pattern:
     1. Attempts direct fetch to document URL
     2. If CORS error occurs and proxy is configured, retries with proxy
@@ -106,12 +106,12 @@ Without a CORS proxy, these requests would fail in the browser environment.
 
 - **`src/agent/transports/proxy-types.ts`**:
   - Defines event types for `AppTransport` (alternative transport in pi-web-ui package)
-  - Not used by Sitegeist - only `ProviderTransport` is used
+  - Not used by Shuvgeist - only `ProviderTransport` is used
 
 - **`src/agent/transports/AppTransport.ts`**:
   - Alternative transport implementation in pi-web-ui package
   - Uses `genai.mariozechner.at` backend with OAuth tokens
-  - **Not used by Sitegeist** - Sitegeist only uses `ProviderTransport`
+  - **Not used by Shuvgeist** - Shuvgeist only uses `ProviderTransport`
 
 ### Default Configuration
 
@@ -132,7 +132,7 @@ if (proxyEnabled === null) {
 
 ### Storage Schema
 
-Settings stored in IndexedDB under `sitegeist-storage` database:
+Settings stored in IndexedDB under `shuvgeist-storage` database:
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
@@ -242,16 +242,16 @@ Users can:
 
 ## Related Files
 
-### Sitegeist Extension
+### Shuvgeist Extension
 - `src/sidepanel.ts` - Proxy initialization and tool configuration
 - `src/tutorials.ts` - User-facing proxy explanation
 - `docs/settings.md` - Proxy settings documentation
 
 ### pi-web-ui Package
 - `src/utils/proxy-utils.ts` - Centralized proxy decision logic
-- `src/agent/transports/ProviderTransport.ts` - LLM request proxy logic (USED by Sitegeist)
-- `src/agent/transports/AppTransport.ts` - Alternative transport (NOT used by Sitegeist)
-- `src/agent/transports/proxy-types.ts` - Event types for AppTransport (NOT used by Sitegeist)
+- `src/agent/transports/ProviderTransport.ts` - LLM request proxy logic (USED by Shuvgeist)
+- `src/agent/transports/AppTransport.ts` - Alternative transport (NOT used by Shuvgeist)
+- `src/agent/transports/proxy-types.ts` - Event types for AppTransport (NOT used by Shuvgeist)
 - `src/tools/extract-document.ts` - Document extraction with try-first-fallback proxy
 - `src/components/ProviderKeyInput.ts` - API key testing with selective proxy
 - `src/dialogs/SettingsDialog.ts` - Proxy settings UI

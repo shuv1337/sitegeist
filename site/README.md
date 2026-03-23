@@ -1,4 +1,4 @@
-# Sitegeist Landing Page
+# Shuvgeist Landing Page
 
 Email signup landing page with backend storage and Three.js orb animation.
 
@@ -55,11 +55,13 @@ Starts backend API (`:3000`) and Vite dev server (`:8080`) with hot reload.
 ./run.sh deploy
 ```
 
-Builds, syncs to `slayer.marioslab.io:/home/badlogic/sitegeist.ai`, restarts services via Docker, and streams logs.
+Builds the site and deploys it to the remote host configured via `SERVER` and `SERVER_DIR`.
 
-Additional commands:
-- `./run.sh sync` - Sync files without restart
-- `./run.sh logs-remote` - Stream remote logs
+Set `SERVER_DIR` before running deploy, for example:
+
+```bash
+SERVER_DIR=/srv/www/geist.shuv.ai ./run.sh deploy
+```
 
 ## API Pattern
 

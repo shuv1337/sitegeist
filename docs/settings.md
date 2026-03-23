@@ -2,7 +2,7 @@
 
 ## Overview
 
-Sitegeist uses a key-value settings store for application configuration like theme, proxy settings, and user preferences. Settings are stored in IndexedDB and accessed through the `SettingsStore` class from `@mariozechner/pi-web-ui`.
+Shuvgeist uses a key-value settings store for application configuration like theme, proxy settings, and user preferences. Settings are stored in IndexedDB and accessed through the `SettingsStore` class from `@mariozechner/pi-web-ui`.
 
 ## Architecture
 
@@ -25,9 +25,9 @@ class SettingsStore {
 Settings are accessed through the global `AppStorage` instance:
 
 ```typescript
-import { getSitegeistStorage } from "./storage/app-storage.js";
+import { getShuvgeistStorage } from "./storage/app-storage.js";
 
-const storage = getSitegeistStorage();
+const storage = getShuvgeistStorage();
 
 // Read a setting
 const proxyEnabled = await storage.settings.get<boolean>("proxy.enabled");
@@ -39,7 +39,7 @@ await storage.settings.set("proxy.enabled", true);
 ## Storage Location
 
 Settings are stored in IndexedDB under:
-- **Database**: `sitegeist-storage`
+- **Database**: `shuvgeist-storage`
 - **Store**: `settings`
 - **Key Path**: Out-of-line keys (keys stored separately from values)
 
