@@ -147,6 +147,15 @@ export class ApiKeysOAuthTab extends SettingsTab {
 							.value=${this.anthropicCodeInput}
 							@input=${(e: Event) => {
 								this.anthropicCodeInput = (e.target as HTMLInputElement).value;
+								this.requestUpdate();
+							}}
+							@paste=${() => {
+								// Paste event fires before the value updates; read on next tick
+								setTimeout(() => {
+									const el = this.querySelector<HTMLInputElement>("input[type=text]");
+									if (el) this.anthropicCodeInput = el.value;
+									this.requestUpdate();
+								}, 0);
 							}}
 							@keydown=${(e: KeyboardEvent) => {
 								if (e.key === "Enter") this.submitAnthropicCode();
