@@ -88,6 +88,7 @@ function base64urlEncode(bytes: Uint8Array): string {
 
 /**
  * Post JSON to a token endpoint, optionally through a CORS proxy.
+ * Retries on 429 with exponential backoff (up to 3 attempts).
  *
  * Uses application/json because Anthropic's token endpoint requires it.
  * CORS preflight is handled by declarativeNetRequest rules that inject
@@ -99,17 +100,30 @@ export async function postTokenRequest(
 	proxyUrl?: string,
 ): Promise<Record<string, unknown>> {
 	const targetUrl = proxyUrl ? `${proxyUrl}/?url=${encodeURIComponent(url)}` : url;
+	const maxAttempts = 3;
 
-	const response = await fetch(targetUrl, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify(body),
-	});
+	for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+		const response = await fetch(targetUrl, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify(body),
+		});
 
-	if (!response.ok) {
-		const text = await response.text().catch(() => "");
-		throw new Error(`Token request failed: ${response.status} ${text}`);
+		if (response.status === 429 && attempt < maxAttempts) {
+			const retryAfter = response.headers.get("retry-after");
+			const delayMs = retryAfter ? Number.parseInt(retryAfter, 10) * 1000 : attempt * 2000;
+			console.warn(`Token request got 429, retrying in ${delayMs}ms (attempt ${attempt}/${maxAttempts})`);
+			await new Promise((r) => setTimeout(r, delayMs));
+			continue;
+		}
+
+		if (!response.ok) {
+			const text = await response.text().catch(() => "");
+			throw new Error(`Token request failed: ${response.status} ${text}`);
+		}
+
+		return response.json();
 	}
 
-	return response.json();
+	throw new Error("Token request failed after retries");
 }
