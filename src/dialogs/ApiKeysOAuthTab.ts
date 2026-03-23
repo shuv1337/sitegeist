@@ -10,6 +10,7 @@ import {
 	parseOAuthCredentials,
 	serializeOAuthCredentials,
 } from "../oauth/index.js";
+import type { OAuthCredentials } from "../oauth/types.js";
 
 const OAUTH_PROVIDERS: OAuthProviderId[] = ["anthropic", "openai-codex", "github-copilot", "google-gemini-cli"];
 
@@ -21,11 +22,15 @@ const PROVIDER_KEY_MAP: Record<OAuthProviderId, string> = {
 };
 
 export class ApiKeysOAuthTab extends SettingsTab {
-	private oauthStatuses: Record<string, "none" | "logged-in" | "logging-in" | "awaiting-code" | "error"> = {};
+	private oauthStatuses: Record<
+		string,
+		"none" | "logged-in" | "logging-in" | "awaiting-code" | "paste-token" | "error"
+	> = {};
 	private oauthErrors: Record<string, string> = {};
 	private deviceCode: string | null = null;
 	private anthropicCodeInput = "";
 	private anthropicCodeResolve: ((value: string) => void) | null = null;
+	private pasteTokenInput = "";
 
 	getTabName(): string {
 		return "Subscriptions";
@@ -69,6 +74,83 @@ export class ApiKeysOAuthTab extends SettingsTab {
 		}
 		this.anthropicCodeInput = "";
 		this.oauthStatuses.anthropic = "none";
+		this.requestUpdate();
+	}
+
+	/**
+	 * Parse a pasted token string. Accepts:
+	 * - Raw sk-ant-oat... access token
+	 * - Full ~/.claude/.credentials.json content
+	 * - The claudeAiOauth object from that file
+	 */
+	private parseAnthropicToken(input: string): OAuthCredentials | null {
+		const trimmed = input.trim();
+
+		// Raw access token
+		if (trimmed.startsWith("sk-ant-oat")) {
+			return {
+				providerId: "anthropic",
+				access: trimmed,
+				refresh: "",
+				// No refresh token — set expiry far in the future; user re-pastes if it expires
+				expires: Date.now() + 365 * 24 * 60 * 60 * 1000,
+			};
+		}
+
+		// JSON — try to parse
+		try {
+			const parsed = JSON.parse(trimmed);
+
+			// Full credentials.json: { claudeAiOauth: { accessToken, refreshToken, expiresAt, ... } }
+			const oauth = parsed.claudeAiOauth ?? parsed;
+			if (oauth.accessToken && typeof oauth.accessToken === "string") {
+				return {
+					providerId: "anthropic",
+					access: oauth.accessToken,
+					refresh: oauth.refreshToken || "",
+					expires: typeof oauth.expiresAt === "number" ? oauth.expiresAt : Date.now() + 3600 * 1000,
+				};
+			}
+
+			// Already our OAuthCredentials format
+			if (oauth.access && oauth.providerId === "anthropic") {
+				return oauth as OAuthCredentials;
+			}
+		} catch {
+			// Not JSON
+		}
+
+		return null;
+	}
+
+	private showPasteToken(provider: OAuthProviderId) {
+		this.oauthStatuses[provider] = "paste-token";
+		this.pasteTokenInput = "";
+		this.oauthErrors[provider] = "";
+		this.requestUpdate();
+	}
+
+	private cancelPasteToken(provider: OAuthProviderId) {
+		this.oauthStatuses[provider] = "none";
+		this.pasteTokenInput = "";
+		this.requestUpdate();
+	}
+
+	private async submitPasteToken(provider: OAuthProviderId) {
+		const creds = this.parseAnthropicToken(this.pasteTokenInput);
+		if (!creds) {
+			this.oauthErrors[provider] =
+				"Could not parse token. Paste a sk-ant-oat... token or ~/.claude/.credentials.json content.";
+			this.requestUpdate();
+			return;
+		}
+
+		const storage = getAppStorage();
+		const key = PROVIDER_KEY_MAP[provider];
+		await storage.providerKeys.set(key, serializeOAuthCredentials(creds));
+		this.oauthStatuses[provider] = "logged-in";
+		this.pasteTokenInput = "";
+		Toast.success(`Token saved for ${getOAuthProviderName(provider)}`);
 		this.requestUpdate();
 	}
 
@@ -127,9 +209,63 @@ export class ApiKeysOAuthTab extends SettingsTab {
 		this.requestUpdate();
 	}
 
+	private renderPasteTokenInput(provider: OAuthProviderId): TemplateResult {
+		const error = this.oauthErrors[provider] || "";
+		return html`
+			<div class="p-4 rounded-lg border border-border bg-card space-y-3">
+				<div class="text-sm font-medium text-foreground">${getOAuthProviderName(provider)}</div>
+				<div class="text-xs text-muted-foreground">
+					Paste a token from <code class="text-foreground">claude setup-token</code>
+					or the contents of <code class="text-foreground">~/.claude/.credentials.json</code>
+				</div>
+				${error ? html`<div class="text-xs text-destructive">${error}</div>` : ""}
+				<textarea
+					class="w-full px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono min-h-[60px] resize-y"
+					placeholder="sk-ant-oat... or JSON credentials"
+					.value=${this.pasteTokenInput}
+					@input=${(e: Event) => {
+						this.pasteTokenInput = (e.target as HTMLTextAreaElement).value;
+						this.requestUpdate();
+					}}
+					@paste=${() => {
+						setTimeout(() => {
+							const el = this.querySelector<HTMLTextAreaElement>("textarea");
+							if (el) this.pasteTokenInput = el.value;
+							this.requestUpdate();
+						}, 0);
+					}}
+					@keydown=${(e: KeyboardEvent) => {
+						if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) this.submitPasteToken(provider);
+						if (e.key === "Escape") this.cancelPasteToken(provider);
+					}}
+				></textarea>
+				<div class="flex gap-2 justify-end">
+					${Button({
+						variant: "ghost",
+						size: "sm",
+						onClick: () => this.cancelPasteToken(provider),
+						children: "Cancel",
+					})}
+					${Button({
+						variant: "default",
+						size: "sm",
+						disabled: !this.pasteTokenInput.trim(),
+						onClick: () => this.submitPasteToken(provider),
+						children: "Save Token",
+					})}
+				</div>
+			</div>
+		`;
+	}
+
 	private renderOAuthProvider(provider: OAuthProviderId): TemplateResult {
 		const status = this.oauthStatuses[provider] || "none";
 		const error = this.oauthErrors[provider] || "";
+
+		// Paste token mode
+		if (provider === "anthropic" && status === "paste-token") {
+			return this.renderPasteTokenInput(provider);
+		}
 
 		// Anthropic awaiting-code: show inline paste input
 		if (provider === "anthropic" && status === "awaiting-code") {
@@ -151,7 +287,6 @@ export class ApiKeysOAuthTab extends SettingsTab {
 								this.requestUpdate();
 							}}
 							@paste=${() => {
-								// Paste event fires before the value updates; read on next tick
 								setTimeout(() => {
 									const el = this.querySelector<HTMLInputElement>("input[type=text]");
 									if (el) this.anthropicCodeInput = el.value;
@@ -192,9 +327,7 @@ export class ApiKeysOAuthTab extends SettingsTab {
 							: html`<span>Logging in...</span>`
 					: status === "error"
 						? html`<span class="text-destructive">${error}</span>`
-						: provider === "anthropic"
-							? html`<span>Log in, then paste the code or callback URL.</span>`
-							: html`<span>Not connected</span>`;
+						: html`<span>Not connected</span>`;
 
 		return html`
 			<div class="flex items-center justify-between p-4 rounded-lg border border-border bg-card">
@@ -211,14 +344,26 @@ export class ApiKeysOAuthTab extends SettingsTab {
 									onClick: () => this.handleLogout(provider),
 									children: "Logout",
 								})
-							: Button({
-									variant: "default",
-									size: "sm",
-									disabled: status === "logging-in",
-									loading: status === "logging-in",
-									onClick: () => this.handleLogin(provider),
-									children: "Login",
-								})
+							: html`
+							${
+								provider === "anthropic"
+									? Button({
+											variant: "outline",
+											size: "sm",
+											onClick: () => this.showPasteToken(provider),
+											children: "Paste Token",
+										})
+									: ""
+							}
+							${Button({
+								variant: "default",
+								size: "sm",
+								disabled: status === "logging-in",
+								loading: status === "logging-in",
+								onClick: () => this.handleLogin(provider),
+								children: "Login",
+							})}
+						`
 					}
 				</div>
 			</div>
