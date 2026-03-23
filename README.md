@@ -136,7 +136,15 @@ shuvgeist cookies --json
 
 ### systemd service
 
-To keep the bridge running persistently on this machine, install the provided user unit:
+To keep the bridge running persistently on this machine, install the provided user unit.
+
+The unit intentionally points at the development source tree via `tsx`:
+- entrypoint: `src/bridge/cli.ts`
+- runtime: `node_modules/.bin/tsx`
+
+That means bridge code changes are picked up after a simple service restart; you do not need to rebuild `dist-cli` just to update the local bridge service.
+
+To install the provided user unit:
 
 ```bash
 install -Dm644 systemd/shuvgeist-bridge.service ~/.config/systemd/user/shuvgeist-bridge.service

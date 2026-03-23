@@ -8,6 +8,7 @@ If the user did not give you a concrete task, read README.md first.
 - The user runs `./dev.sh` in a separate tmux session. Do not run `npm run dev` or `npm run build`.
 - NEVER commit unless the user asks.
 - Keep the Shuvgeist bridge running via the user systemd unit `shuvgeist-bridge.service`, not an ad-hoc shell process.
+- The bridge unit should point at the development source tree (`node_modules/.bin/tsx src/bridge/cli.ts serve ...`), not the built `dist-cli` artifact, so a service restart picks up local bridge changes.
 - When the bridge implementation or CLI entrypoint changes, update `systemd/shuvgeist-bridge.service`, install it to `~/.config/systemd/user/shuvgeist-bridge.service`, then run `systemctl --user daemon-reload && systemctl --user restart shuvgeist-bridge.service`.
 
 ## Code Quality
