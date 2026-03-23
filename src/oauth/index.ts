@@ -6,7 +6,7 @@
  * refreshes the token if expired, and returns the access token.
  */
 
-import { loginAnthropic, refreshAnthropic } from "./anthropic.js";
+import { type AnthropicCodeCallback, loginAnthropic, refreshAnthropic } from "./anthropic.js";
 import { loginGitHubCopilot, refreshGitHubCopilot } from "./github-copilot.js";
 import { loginGeminiCli, refreshGeminiCli } from "./google-gemini-cli.js";
 import { loginOpenAICodex, refreshOpenAICodex } from "./openai-codex.js";
@@ -56,10 +56,12 @@ export async function oauthLogin(
 	provider: OAuthProviderId,
 	_proxyUrl?: string,
 	onDeviceCode?: DeviceCodeCallback,
+	onAnthropicCode?: AnthropicCodeCallback,
 ): Promise<OAuthCredentials> {
 	switch (provider) {
 		case "anthropic":
-			return loginAnthropic();
+			if (!onAnthropicCode) throw new Error("Anthropic login requires a code input callback");
+			return loginAnthropic(onAnthropicCode);
 		case "openai-codex":
 			return loginOpenAICodex();
 		case "github-copilot":

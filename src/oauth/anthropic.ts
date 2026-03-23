@@ -2,13 +2,9 @@
  * Anthropic OAuth flow for browser extensions.
  *
  * Anthropic Max login is handled as a manual code / callback URL paste flow.
- * We open the authorize URL in a new tab, then ask the user to paste either:
- * - the authorization code, or
- * - the full localhost callback URL from the browser address bar
- *
- * This mirrors the fallback flow used by Anthropic's CLI more closely than
- * the previous tab-watcher implementation and avoids relying on an automatic
- * browser-side token exchange after the redirect.
+ * We open the authorize URL in a new tab, then the caller provides the
+ * authorization code or full callback URL via a callback (non-blocking
+ * in-panel input instead of window.prompt which blocks the entire browser).
  */
 
 import { generatePKCE, postTokenRequest } from "./browser-oauth.js";
@@ -22,7 +18,7 @@ const REDIRECT_URI = "http://localhost:53692/callback";
 const SCOPES =
 	"org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
 
-function parseAuthorizationInput(input: string): { code?: string; state?: string } {
+export function parseAuthorizationInput(input: string): { code?: string; state?: string } {
 	const value = input.trim();
 	if (!value) return {};
 
@@ -55,33 +51,18 @@ function parseAuthorizationInput(input: string): { code?: string; state?: string
 	return { code: value };
 }
 
-function promptForAuthorizationInput(): string {
-	const input = window.prompt(
-		[
-			"Complete Anthropic login in the opened tab.",
-			"",
-			"Then paste one of the following here:",
-			"• the authorization code",
-			"• the full callback URL from the browser address bar",
-			"",
-			"If the browser redirects to localhost and the page fails to load, copy the full URL and paste it here.",
-		].join("\n"),
-		"",
-	);
-
-	if (input === null) {
-		throw new Error("Anthropic login cancelled");
-	}
-
-	return input;
-}
+/**
+ * Callback type for collecting the authorization code from the user.
+ * The caller should show an inline input and resolve the promise when the user submits.
+ */
+export type AnthropicCodeCallback = () => Promise<string>;
 
 /**
  * Run the Anthropic OAuth login flow in the browser.
- * Opens a tab for the user to authenticate, then asks the user to paste the
- * resulting code or full callback URL.
+ * Opens a tab for the user to authenticate, then waits for the caller to
+ * provide the authorization code or callback URL via the onCodeInput callback.
  */
-export async function loginAnthropic(): Promise<OAuthCredentials> {
+export async function loginAnthropic(onCodeInput: AnthropicCodeCallback): Promise<OAuthCredentials> {
 	const { verifier, challenge } = await generatePKCE();
 
 	const authParams = new URLSearchParams({
@@ -97,7 +78,8 @@ export async function loginAnthropic(): Promise<OAuthCredentials> {
 
 	await chrome.tabs.create({ url: `${AUTHORIZE_URL}?${authParams.toString()}`, active: true });
 
-	const parsed = parseAuthorizationInput(promptForAuthorizationInput());
+	const rawInput = await onCodeInput();
+	const parsed = parseAuthorizationInput(rawInput);
 	const code = parsed.code;
 	const state = parsed.state ?? verifier;
 

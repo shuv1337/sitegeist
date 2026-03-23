@@ -22,9 +22,11 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 	private provider = "";
 	private resolvePromise?: (success: boolean) => void;
 	private checkInterval?: ReturnType<typeof setInterval>;
-	private oauthStatus: "idle" | "logging-in" | "error" = "idle";
+	private oauthStatus: "idle" | "logging-in" | "awaiting-code" | "error" = "idle";
 	private oauthError = "";
 	private deviceCode: string | null = null;
+	private anthropicCodeInput = "";
+	private anthropicCodeResolve: ((value: string) => void) | null = null;
 
 	protected modalWidth = "min(500px, 90vw)";
 	protected modalHeight = "auto";
@@ -61,31 +63,33 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 
 	override close() {
 		super.close();
+		if (this.anthropicCodeResolve) {
+			this.anthropicCodeResolve("");
+			this.anthropicCodeResolve = null;
+		}
 		if (this.resolvePromise) {
 			this.resolvePromise(false);
 		}
 	}
 
-	private getOAuthDescription() {
-		if (this.oauthStatus === "logging-in") {
-			if (this.provider === "anthropic") {
-				return "Browser opened. Paste the code or callback URL when prompted.";
-			}
-			if (this.deviceCode) {
-				return html`Enter code: <strong class="text-foreground font-mono">${this.deviceCode}</strong>`;
-			}
-			return "Logging in...";
-		}
+	private submitAnthropicCode() {
+		const value = this.anthropicCodeInput.trim();
+		if (!value || !this.anthropicCodeResolve) return;
+		this.anthropicCodeResolve(value);
+		this.anthropicCodeResolve = null;
+		this.anthropicCodeInput = "";
+		this.oauthStatus = "logging-in";
+		this.requestUpdate();
+	}
 
-		if (this.oauthStatus === "error") {
-			return html`<span class="text-destructive">${this.oauthError}</span>`;
+	private cancelAnthropicCode() {
+		if (this.anthropicCodeResolve) {
+			this.anthropicCodeResolve("");
+			this.anthropicCodeResolve = null;
 		}
-
-		if (this.provider === "anthropic") {
-			return "Log in with your existing subscription. Browser login opens first, then you paste the code or callback URL.";
-		}
-
-		return "Log in with your existing subscription";
+		this.anthropicCodeInput = "";
+		this.oauthStatus = "idle";
+		this.requestUpdate();
 	}
 
 	private async handleOAuthLogin() {
@@ -97,10 +101,27 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 		try {
 			const storage = getAppStorage();
 
-			const credentials = await oauthLogin(this.provider as OAuthProviderId, undefined, (info) => {
-				this.deviceCode = info.userCode;
-				this.requestUpdate();
-			});
+			const anthropicCodeCallback =
+				this.provider === "anthropic"
+					? () => {
+							return new Promise<string>((resolve) => {
+								this.anthropicCodeResolve = resolve;
+								this.oauthStatus = "awaiting-code";
+								this.anthropicCodeInput = "";
+								this.requestUpdate();
+							});
+						}
+					: undefined;
+
+			const credentials = await oauthLogin(
+				this.provider as OAuthProviderId,
+				undefined,
+				(info) => {
+					this.deviceCode = info.userCode;
+					this.requestUpdate();
+				},
+				anthropicCodeCallback,
+			);
 
 			await storage.providerKeys.set(this.provider, serializeOAuthCredentials(credentials));
 
@@ -116,8 +137,62 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 		}
 	}
 
+	private renderAnthropicCodeInput() {
+		return html`
+			<div class="flex flex-col gap-2 p-3 rounded-lg border border-border bg-card">
+				<div class="text-sm font-medium text-foreground">
+					${getOAuthProviderName(this.provider as OAuthProviderId)}
+				</div>
+				<div class="text-xs text-muted-foreground">
+					Complete login in the opened tab, then paste the code or callback URL below.
+				</div>
+				<div class="flex gap-2">
+					<input
+						type="text"
+						class="flex-1 px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+						placeholder="Paste code or callback URL here"
+						.value=${this.anthropicCodeInput}
+						@input=${(e: Event) => {
+							this.anthropicCodeInput = (e.target as HTMLInputElement).value;
+						}}
+						@keydown=${(e: KeyboardEvent) => {
+							if (e.key === "Enter") this.submitAnthropicCode();
+							if (e.key === "Escape") this.cancelAnthropicCode();
+						}}
+					/>
+					${Button({
+						variant: "default",
+						size: "sm",
+						disabled: !this.anthropicCodeInput.trim(),
+						onClick: () => this.submitAnthropicCode(),
+						children: "Submit",
+					})}
+					${Button({
+						variant: "ghost",
+						size: "sm",
+						onClick: () => this.cancelAnthropicCode(),
+						children: "Cancel",
+					})}
+				</div>
+			</div>
+		`;
+	}
+
 	protected renderContent() {
 		const supportsOAuth = isOAuthProvider(this.provider);
+
+		const oauthDescription =
+			this.oauthStatus === "logging-in"
+				? this.provider === "anthropic"
+					? "Opening browser..."
+					: this.deviceCode
+						? html`Enter code: <strong class="text-foreground font-mono">${this.deviceCode}</strong>`
+						: "Logging in..."
+				: this.oauthStatus === "error"
+					? html`<span class="text-destructive">${this.oauthError}</span>`
+					: this.provider === "anthropic"
+						? "Log in, then paste the code or callback URL."
+						: "Log in with your existing subscription";
 
 		return html`
 			${DialogContent({
@@ -134,24 +209,30 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 							<div class="flex flex-col gap-3">
 								<h3 class="text-sm font-semibold text-foreground">Subscription Login</h3>
 
-								<div class="flex items-center justify-between p-3 rounded-lg border border-border bg-card">
-									<div class="flex-1">
-										<div class="text-sm font-medium text-foreground">
-											${getOAuthProviderName(this.provider as OAuthProviderId)}
+								${
+									this.oauthStatus === "awaiting-code" && this.provider === "anthropic"
+										? this.renderAnthropicCodeInput()
+										: html`
+										<div class="flex items-center justify-between p-3 rounded-lg border border-border bg-card">
+											<div class="flex-1">
+												<div class="text-sm font-medium text-foreground">
+													${getOAuthProviderName(this.provider as OAuthProviderId)}
+												</div>
+												<div class="text-xs text-muted-foreground mt-1">
+													${oauthDescription}
+												</div>
+											</div>
+											${Button({
+												variant: "default",
+												size: "sm",
+												disabled: this.oauthStatus === "logging-in",
+												loading: this.oauthStatus === "logging-in",
+												onClick: () => this.handleOAuthLogin(),
+												children: "Login",
+											})}
 										</div>
-										<div class="text-xs text-muted-foreground mt-1">
-											${this.getOAuthDescription()}
-										</div>
-									</div>
-									${Button({
-										variant: "default",
-										size: "sm",
-										disabled: this.oauthStatus === "logging-in",
-										loading: this.oauthStatus === "logging-in",
-										onClick: () => this.handleOAuthLogin(),
-										children: "Login",
-									})}
-								</div>
+									`
+								}
 							</div>
 
 							<div class="flex items-center gap-3">

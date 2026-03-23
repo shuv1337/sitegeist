@@ -21,9 +21,11 @@ const PROVIDER_KEY_MAP: Record<OAuthProviderId, string> = {
 };
 
 export class ApiKeysOAuthTab extends SettingsTab {
-	private oauthStatuses: Record<string, "none" | "logged-in" | "logging-in" | "error"> = {};
+	private oauthStatuses: Record<string, "none" | "logged-in" | "logging-in" | "awaiting-code" | "error"> = {};
 	private oauthErrors: Record<string, string> = {};
 	private deviceCode: string | null = null;
+	private anthropicCodeInput = "";
+	private anthropicCodeResolve: ((value: string) => void) | null = null;
 
 	getTabName(): string {
 		return "Subscriptions";
@@ -50,34 +52,24 @@ export class ApiKeysOAuthTab extends SettingsTab {
 		this.requestUpdate();
 	}
 
-	private getLoginDescription(
-		provider: OAuthProviderId,
-		status: "none" | "logged-in" | "logging-in" | "error",
-		error: string,
-	) {
-		if (status === "logged-in") {
-			return html`<span class="text-green-600 dark:text-green-400">Connected</span>`;
-		}
+	private submitAnthropicCode() {
+		const value = this.anthropicCodeInput.trim();
+		if (!value || !this.anthropicCodeResolve) return;
+		this.anthropicCodeResolve(value);
+		this.anthropicCodeResolve = null;
+		this.anthropicCodeInput = "";
+		this.oauthStatuses.anthropic = "logging-in";
+		this.requestUpdate();
+	}
 
-		if (status === "logging-in") {
-			if (provider === "anthropic") {
-				return html`<span>Browser opened. Paste the code or callback URL when prompted.</span>`;
-			}
-			if (this.deviceCode) {
-				return html`<span>Enter code: <strong class="text-foreground font-mono">${this.deviceCode}</strong></span>`;
-			}
-			return html`<span>Logging in...</span>`;
+	private cancelAnthropicCode() {
+		if (this.anthropicCodeResolve) {
+			this.anthropicCodeResolve("");
+			this.anthropicCodeResolve = null;
 		}
-
-		if (status === "error") {
-			return html`<span class="text-destructive">${error}</span>`;
-		}
-
-		if (provider === "anthropic") {
-			return html`<span>Opens browser login, then asks you to paste the code or callback URL.</span>`;
-		}
-
-		return html`<span>Not connected</span>`;
+		this.anthropicCodeInput = "";
+		this.oauthStatuses.anthropic = "none";
+		this.requestUpdate();
 	}
 
 	private async handleLogin(provider: OAuthProviderId) {
@@ -89,10 +81,27 @@ export class ApiKeysOAuthTab extends SettingsTab {
 		try {
 			const storage = getAppStorage();
 
-			const credentials = await oauthLogin(provider, undefined, (info) => {
-				this.deviceCode = info.userCode;
-				this.requestUpdate();
-			});
+			const anthropicCodeCallback =
+				provider === "anthropic"
+					? () => {
+							return new Promise<string>((resolve) => {
+								this.anthropicCodeResolve = resolve;
+								this.oauthStatuses.anthropic = "awaiting-code";
+								this.anthropicCodeInput = "";
+								this.requestUpdate();
+							});
+						}
+					: undefined;
+
+			const credentials = await oauthLogin(
+				provider,
+				undefined,
+				(info) => {
+					this.deviceCode = info.userCode;
+					this.requestUpdate();
+				},
+				anthropicCodeCallback,
+			);
 
 			const key = PROVIDER_KEY_MAP[provider];
 			await storage.providerKeys.set(key, serializeOAuthCredentials(credentials));
@@ -122,13 +131,66 @@ export class ApiKeysOAuthTab extends SettingsTab {
 		const status = this.oauthStatuses[provider] || "none";
 		const error = this.oauthErrors[provider] || "";
 
+		// Anthropic awaiting-code: show inline paste input
+		if (provider === "anthropic" && status === "awaiting-code") {
+			return html`
+				<div class="p-4 rounded-lg border border-border bg-card space-y-3">
+					<div class="text-sm font-medium text-foreground">${getOAuthProviderName(provider)}</div>
+					<div class="text-xs text-muted-foreground">
+						Complete login in the opened tab, then paste the code or callback URL below.
+					</div>
+					<div class="flex gap-2">
+						<input
+							type="text"
+							class="flex-1 px-3 py-2 text-sm rounded-md border border-border bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary font-mono"
+							placeholder="Paste code or callback URL here"
+							.value=${this.anthropicCodeInput}
+							@input=${(e: Event) => {
+								this.anthropicCodeInput = (e.target as HTMLInputElement).value;
+							}}
+							@keydown=${(e: KeyboardEvent) => {
+								if (e.key === "Enter") this.submitAnthropicCode();
+								if (e.key === "Escape") this.cancelAnthropicCode();
+							}}
+						/>
+						${Button({
+							variant: "default",
+							size: "sm",
+							disabled: !this.anthropicCodeInput.trim(),
+							onClick: () => this.submitAnthropicCode(),
+							children: "Submit",
+						})}
+						${Button({
+							variant: "ghost",
+							size: "sm",
+							onClick: () => this.cancelAnthropicCode(),
+							children: "Cancel",
+						})}
+					</div>
+				</div>
+			`;
+		}
+
+		const statusContent =
+			status === "logged-in"
+				? html`<span class="text-green-600 dark:text-green-400">Connected</span>`
+				: status === "logging-in"
+					? provider === "anthropic"
+						? html`<span>Opening browser...</span>`
+						: this.deviceCode
+							? html`<span>Enter code: <strong class="text-foreground font-mono">${this.deviceCode}</strong></span>`
+							: html`<span>Logging in...</span>`
+					: status === "error"
+						? html`<span class="text-destructive">${error}</span>`
+						: provider === "anthropic"
+							? html`<span>Log in, then paste the code or callback URL.</span>`
+							: html`<span>Not connected</span>`;
+
 		return html`
 			<div class="flex items-center justify-between p-4 rounded-lg border border-border bg-card">
 				<div class="flex-1">
 					<div class="text-sm font-medium text-foreground">${getOAuthProviderName(provider)}</div>
-					<div class="text-xs text-muted-foreground mt-1">
-						${this.getLoginDescription(provider, status, error)}
-					</div>
+					<div class="text-xs text-muted-foreground mt-1">${statusContent}</div>
 				</div>
 				<div class="flex gap-2">
 					${
