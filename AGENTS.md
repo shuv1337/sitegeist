@@ -7,6 +7,8 @@ If the user did not give you a concrete task, read README.md first.
 - After code changes: run `./check.sh`. Fix all errors and warnings before committing.
 - The user runs `./dev.sh` in a separate tmux session. Do not run `npm run dev` or `npm run build`.
 - NEVER commit unless the user asks.
+- Keep the Shuvgeist bridge running via the user systemd unit `shuvgeist-bridge.service`, not an ad-hoc shell process.
+- When the bridge implementation or CLI entrypoint changes, update `systemd/shuvgeist-bridge.service`, install it to `~/.config/systemd/user/shuvgeist-bridge.service`, then run `systemctl --user daemon-reload && systemctl --user restart shuvgeist-bridge.service`.
 
 ## Code Quality
 - No `any` types unless absolutely necessary

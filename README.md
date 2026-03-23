@@ -134,6 +134,28 @@ shuvgeist cookies --json
 | 2 | No extension target connected |
 | 3 | Auth/configuration/network error |
 
+### systemd service
+
+To keep the bridge running persistently on this machine, install the provided user unit:
+
+```bash
+install -Dm644 systemd/shuvgeist-bridge.service ~/.config/systemd/user/shuvgeist-bridge.service
+systemctl --user daemon-reload
+systemctl --user enable --now shuvgeist-bridge.service
+```
+
+Check status with:
+
+```bash
+systemctl --user status shuvgeist-bridge.service
+```
+
+Restart after bridge/CLI changes with:
+
+```bash
+systemctl --user restart shuvgeist-bridge.service
+```
+
 ### LAN operation
 
 The bridge supports multi-host setups on a trusted local network:

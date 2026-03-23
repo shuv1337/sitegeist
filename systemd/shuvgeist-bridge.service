@@ -1,0 +1,15 @@
+[Unit]
+Description=Shuvgeist CLI Bridge Server
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/shuv/repos/shuvgeist
+ExecStart=/home/shuv/.local/share/mise/installs/node/25.2.1/bin/node /home/shuv/repos/shuvgeist/dist-cli/shuvgeist.mjs serve --host 0.0.0.0
+Restart=always
+RestartSec=3
+Environment=HOME=/home/shuv
+
+[Install]
+WantedBy=default.target
