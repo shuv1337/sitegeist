@@ -2,6 +2,11 @@
 
 ## [Unreleased]
 
+### Added
+
+- Import/Export for custom providers in Providers & Models settings tab, with conflict resolution UI for overwrites
+- Proxx provider preset in `static/provider-presets/proxx.json` for quick setup after storage resets
+
 ### Fixed
 
 - Anthropic Max subscription login now uses a manual code or callback URL paste flow instead of the broken automatic token-exchange redirect flow, restoring Claude Pro/Max sign-in and clarifying the UI prompts.

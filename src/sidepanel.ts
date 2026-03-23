@@ -14,7 +14,6 @@ import {
 	createExtractDocumentTool,
 	createStreamFn,
 	ModelSelector,
-	ProvidersModelsTab,
 	SettingsDialog,
 	// PersistentStorageDialog,
 	setAppStorage,
@@ -48,6 +47,7 @@ import { BridgeTab, setBridgeSettingsChangeCallback, setBridgeStateForTab } from
 import { CostsTab } from "./dialogs/CostsTab.js";
 import { SessionCostDialog } from "./dialogs/SessionCostDialog.js";
 import { ShuvgeistSessionListDialog } from "./dialogs/SessionListDialog.js";
+import { ShuvgeistProvidersTab } from "./dialogs/ShuvgeistProvidersTab.js";
 import { SkillsTab } from "./dialogs/SkillsTab.js";
 import { UpdateNotificationDialog } from "./dialogs/UpdateNotificationDialog.js";
 import { UserScriptsPermissionDialog } from "./dialogs/UserScriptsPermissionDialog.js";
@@ -313,7 +313,7 @@ function openApiKeysDialog(): Promise<void> {
 	return new Promise((resolve) => {
 		SettingsDialog.open(
 			[
-				new ProvidersModelsTab(),
+				new ShuvgeistProvidersTab(),
 				new ApiKeysOAuthTab(),
 				new CostsTab(),
 				new SkillsTab(),
@@ -1175,7 +1175,7 @@ const renderApp = () => {
 						children: icon(Settings, "sm"),
 						onClick: () =>
 							SettingsDialog.open([
-								new ProvidersModelsTab(),
+								new ShuvgeistProvidersTab(),
 								new ApiKeysOAuthTab(),
 								new CostsTab(),
 								new SkillsTab(),
