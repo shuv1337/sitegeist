@@ -33,7 +33,7 @@
 			]
 		},
 		"condition": {
-			"urlFilter": "||platform.claude.com",
+			"urlFilter": "||console.anthropic.com",
 			"resourceTypes": ["xmlhttprequest", "other"]
 		}
 	},
