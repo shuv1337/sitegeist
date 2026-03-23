@@ -1,13 +1,17 @@
 /**
  * Anthropic OAuth flow for browser extensions.
  *
- * Uses the same client ID and endpoints as the CLI,
- * but replaces the local HTTP callback server with tab URL watching.
- * CORS restrictions on platform.claude.com are handled by
- * declarativeNetRequest rules in the manifest.
+ * Anthropic Max login is handled as a manual code / callback URL paste flow.
+ * We open the authorize URL in a new tab, then ask the user to paste either:
+ * - the authorization code, or
+ * - the full localhost callback URL from the browser address bar
+ *
+ * This mirrors the fallback flow used by Anthropic's CLI more closely than
+ * the previous tab-watcher implementation and avoids relying on an automatic
+ * browser-side token exchange after the redirect.
  */
 
-import { generatePKCE, postTokenRequest, waitForOAuthRedirect } from "./browser-oauth.js";
+import { generatePKCE, postTokenRequest } from "./browser-oauth.js";
 import type { OAuthCredentials } from "./types.js";
 
 const decode = (s: string) => atob(s);
@@ -15,13 +19,67 @@ const CLIENT_ID = decode("OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl");
 const AUTHORIZE_URL = "https://claude.ai/oauth/authorize";
 const TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
 const REDIRECT_URI = "http://localhost:53692/callback";
-const REDIRECT_HOST = "localhost:53692";
 const SCOPES =
 	"org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
 
+function parseAuthorizationInput(input: string): { code?: string; state?: string } {
+	const value = input.trim();
+	if (!value) return {};
+
+	try {
+		const url = new URL(value);
+		return {
+			code: url.searchParams.get("code") ?? undefined,
+			state: url.searchParams.get("state") ?? undefined,
+		};
+	} catch {
+		// Not a full URL, keep parsing below.
+	}
+
+	if (value.includes("#")) {
+		const [code, state] = value.split("#", 2);
+		return {
+			code: code || undefined,
+			state: state || undefined,
+		};
+	}
+
+	if (value.includes("code=")) {
+		const params = new URLSearchParams(value.startsWith("?") ? value.slice(1) : value);
+		return {
+			code: params.get("code") ?? undefined,
+			state: params.get("state") ?? undefined,
+		};
+	}
+
+	return { code: value };
+}
+
+function promptForAuthorizationInput(): string {
+	const input = window.prompt(
+		[
+			"Complete Anthropic login in the opened tab.",
+			"",
+			"Then paste one of the following here:",
+			"• the authorization code",
+			"• the full callback URL from the browser address bar",
+			"",
+			"If the browser redirects to localhost and the page fails to load, copy the full URL and paste it here.",
+		].join("\n"),
+		"",
+	);
+
+	if (input === null) {
+		throw new Error("Anthropic login cancelled");
+	}
+
+	return input;
+}
+
 /**
  * Run the Anthropic OAuth login flow in the browser.
- * Opens a tab for the user to authenticate, watches for the redirect.
+ * Opens a tab for the user to authenticate, then asks the user to paste the
+ * resulting code or full callback URL.
  */
 export async function loginAnthropic(): Promise<OAuthCredentials> {
 	const { verifier, challenge } = await generatePKCE();
@@ -37,14 +95,14 @@ export async function loginAnthropic(): Promise<OAuthCredentials> {
 		state: verifier,
 	});
 
-	const redirectUrl = await waitForOAuthRedirect(`${AUTHORIZE_URL}?${authParams.toString()}`, REDIRECT_HOST);
+	await chrome.tabs.create({ url: `${AUTHORIZE_URL}?${authParams.toString()}`, active: true });
 
-	const code = redirectUrl.searchParams.get("code");
-	const state = redirectUrl.searchParams.get("state");
+	const parsed = parseAuthorizationInput(promptForAuthorizationInput());
+	const code = parsed.code;
+	const state = parsed.state ?? verifier;
 
-	if (!code) throw new Error("Missing authorization code in redirect");
-	if (!state) throw new Error("Missing state in redirect");
-	if (state !== verifier) throw new Error("OAuth state mismatch");
+	if (!code) throw new Error("Missing authorization code");
+	if (parsed.state && parsed.state !== verifier) throw new Error("OAuth state mismatch");
 
 	const tokenData = await postTokenRequest(TOKEN_URL, {
 		grant_type: "authorization_code",

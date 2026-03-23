@@ -66,6 +66,28 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 		}
 	}
 
+	private getOAuthDescription() {
+		if (this.oauthStatus === "logging-in") {
+			if (this.provider === "anthropic") {
+				return "Browser opened. Paste the code or callback URL when prompted.";
+			}
+			if (this.deviceCode) {
+				return html`Enter code: <strong class="text-foreground font-mono">${this.deviceCode}</strong>`;
+			}
+			return "Logging in...";
+		}
+
+		if (this.oauthStatus === "error") {
+			return html`<span class="text-destructive">${this.oauthError}</span>`;
+		}
+
+		if (this.provider === "anthropic") {
+			return "Log in with your existing subscription. Browser login opens first, then you paste the code or callback URL.";
+		}
+
+		return "Log in with your existing subscription";
+	}
+
 	private async handleOAuthLogin() {
 		this.oauthStatus = "logging-in";
 		this.oauthError = "";
@@ -118,15 +140,7 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 											${getOAuthProviderName(this.provider as OAuthProviderId)}
 										</div>
 										<div class="text-xs text-muted-foreground mt-1">
-											${
-												this.oauthStatus === "logging-in"
-													? this.deviceCode
-														? html`Enter code: <strong class="text-foreground font-mono">${this.deviceCode}</strong>`
-														: "Logging in..."
-													: this.oauthStatus === "error"
-														? html`<span class="text-destructive">${this.oauthError}</span>`
-														: "Log in with your existing subscription"
-											}
+											${this.getOAuthDescription()}
 										</div>
 									</div>
 									${Button({

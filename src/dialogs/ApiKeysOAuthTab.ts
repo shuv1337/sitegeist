@@ -50,6 +50,36 @@ export class ApiKeysOAuthTab extends SettingsTab {
 		this.requestUpdate();
 	}
 
+	private getLoginDescription(
+		provider: OAuthProviderId,
+		status: "none" | "logged-in" | "logging-in" | "error",
+		error: string,
+	) {
+		if (status === "logged-in") {
+			return html`<span class="text-green-600 dark:text-green-400">Connected</span>`;
+		}
+
+		if (status === "logging-in") {
+			if (provider === "anthropic") {
+				return html`<span>Browser opened. Paste the code or callback URL when prompted.</span>`;
+			}
+			if (this.deviceCode) {
+				return html`<span>Enter code: <strong class="text-foreground font-mono">${this.deviceCode}</strong></span>`;
+			}
+			return html`<span>Logging in...</span>`;
+		}
+
+		if (status === "error") {
+			return html`<span class="text-destructive">${error}</span>`;
+		}
+
+		if (provider === "anthropic") {
+			return html`<span>Opens browser login, then asks you to paste the code or callback URL.</span>`;
+		}
+
+		return html`<span>Not connected</span>`;
+	}
+
 	private async handleLogin(provider: OAuthProviderId) {
 		this.oauthStatuses[provider] = "logging-in";
 		this.oauthErrors[provider] = "";
@@ -97,17 +127,7 @@ export class ApiKeysOAuthTab extends SettingsTab {
 				<div class="flex-1">
 					<div class="text-sm font-medium text-foreground">${getOAuthProviderName(provider)}</div>
 					<div class="text-xs text-muted-foreground mt-1">
-						${
-							status === "logged-in"
-								? html`<span class="text-green-600 dark:text-green-400">Connected</span>`
-								: status === "logging-in"
-									? this.deviceCode
-										? html`<span>Enter code: <strong class="text-foreground font-mono">${this.deviceCode}</strong></span>`
-										: html`<span>Logging in...</span>`
-									: status === "error"
-										? html`<span class="text-destructive">${error}</span>`
-										: html`<span>Not connected</span>`
-						}
+						${this.getLoginDescription(provider, status, error)}
 					</div>
 				</div>
 				<div class="flex gap-2">
@@ -143,7 +163,6 @@ export class ApiKeysOAuthTab extends SettingsTab {
 						Tokens are stored locally and refreshed automatically.
 					</p>
 				</div>
-
 
 				<div class="flex flex-col gap-3">
 					${OAUTH_PROVIDERS.map((p) => this.renderOAuthProvider(p))}
