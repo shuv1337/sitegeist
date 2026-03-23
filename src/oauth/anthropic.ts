@@ -1,13 +1,16 @@
 /**
  * Anthropic OAuth flow for browser extensions.
  *
- * Anthropic Max login is handled as a manual code / callback URL paste flow.
- * We open the authorize URL in a new tab, then the caller provides the
- * authorization code or full callback URL via a callback (non-blocking
- * in-panel input instead of window.prompt which blocks the entire browser).
+ * Primary path: auto-detect the localhost redirect via tab URL watching
+ * (same as upstream sitegeist). The tab redirects to localhost:53692 which
+ * fails to load, but the extension intercepts the URL and extracts the code.
+ *
+ * Fallback: if the user closes the tab or the redirect is missed, the caller
+ * can provide a manual code input callback so the user can paste the callback
+ * URL or authorization code.
  */
 
-import { generatePKCE, postTokenRequest } from "./browser-oauth.js";
+import { generatePKCE, postTokenRequest, waitForOAuthRedirect } from "./browser-oauth.js";
 import type { OAuthCredentials } from "./types.js";
 
 const decode = (s: string) => atob(s);
@@ -15,6 +18,7 @@ const CLIENT_ID = decode("OWQxYzI1MGEtZTYxYi00NGQ5LTg4ZWQtNTk0NGQxOTYyZjVl");
 const AUTHORIZE_URL = "https://claude.ai/oauth/authorize";
 const TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
 const REDIRECT_URI = "http://localhost:53692/callback";
+const REDIRECT_HOST = "localhost:53692";
 const SCOPES =
 	"org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
 
@@ -59,10 +63,12 @@ export type AnthropicCodeCallback = () => Promise<string>;
 
 /**
  * Run the Anthropic OAuth login flow in the browser.
- * Opens a tab for the user to authenticate, then waits for the caller to
- * provide the authorization code or callback URL via the onCodeInput callback.
+ *
+ * Opens a tab, watches for the localhost redirect, and exchanges the code.
+ * If onCodeInput is provided, it races with the redirect watcher so the user
+ * can manually paste the callback URL if auto-detection fails.
  */
-export async function loginAnthropic(onCodeInput: AnthropicCodeCallback): Promise<OAuthCredentials> {
+export async function loginAnthropic(onCodeInput?: AnthropicCodeCallback): Promise<OAuthCredentials> {
 	const { verifier, challenge } = await generatePKCE();
 
 	const authParams = new URLSearchParams({
@@ -76,15 +82,52 @@ export async function loginAnthropic(onCodeInput: AnthropicCodeCallback): Promis
 		state: verifier,
 	});
 
-	await chrome.tabs.create({ url: `${AUTHORIZE_URL}?${authParams.toString()}`, active: true });
+	let code: string | undefined;
+	let state: string | undefined;
 
-	const rawInput = await onCodeInput();
-	const parsed = parseAuthorizationInput(rawInput);
-	const code = parsed.code;
-	const state = parsed.state ?? verifier;
+	if (onCodeInput) {
+		// Race: auto redirect watcher vs manual paste
+		const redirectPromise = waitForOAuthRedirect(`${AUTHORIZE_URL}?${authParams.toString()}`, REDIRECT_HOST)
+			.then((url) => ({ source: "redirect" as const, url }))
+			.catch(() => null);
+
+		const manualPromise = onCodeInput()
+			.then((input) => ({ source: "manual" as const, input }))
+			.catch(() => null);
+
+		const winner = await Promise.race([redirectPromise, manualPromise]);
+
+		if (winner?.source === "redirect") {
+			code = winner.url.searchParams.get("code") ?? undefined;
+			state = winner.url.searchParams.get("state") ?? undefined;
+		} else if (winner?.source === "manual" && winner.input) {
+			const parsed = parseAuthorizationInput(winner.input);
+			code = parsed.code;
+			state = parsed.state ?? verifier;
+		}
+
+		// If first winner produced nothing, wait for the other
+		if (!code) {
+			const other = winner?.source === "redirect" ? await manualPromise : await redirectPromise;
+			if (other?.source === "redirect") {
+				code = other.url.searchParams.get("code") ?? undefined;
+				state = other.url.searchParams.get("state") ?? undefined;
+			} else if (other?.source === "manual" && other.input) {
+				const parsed = parseAuthorizationInput(other.input);
+				code = parsed.code;
+				state = parsed.state ?? verifier;
+			}
+		}
+	} else {
+		// No manual fallback — just watch for redirect
+		const redirectUrl = await waitForOAuthRedirect(`${AUTHORIZE_URL}?${authParams.toString()}`, REDIRECT_HOST);
+		code = redirectUrl.searchParams.get("code") ?? undefined;
+		state = redirectUrl.searchParams.get("state") ?? undefined;
+	}
 
 	if (!code) throw new Error("Missing authorization code");
-	if (parsed.state && parsed.state !== verifier) throw new Error("OAuth state mismatch");
+	if (!state) state = verifier;
+	if (state !== verifier) throw new Error("OAuth state mismatch");
 
 	const tokenData = await postTokenRequest(TOKEN_URL, {
 		grant_type: "authorization_code",

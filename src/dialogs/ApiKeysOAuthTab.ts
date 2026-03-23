@@ -137,7 +137,8 @@ export class ApiKeysOAuthTab extends SettingsTab {
 				<div class="p-4 rounded-lg border border-border bg-card space-y-3">
 					<div class="text-sm font-medium text-foreground">${getOAuthProviderName(provider)}</div>
 					<div class="text-xs text-muted-foreground">
-						Complete login in the opened tab, then paste the code or callback URL below.
+						Waiting for login to complete. If the redirect was not detected automatically,
+						paste the callback URL or code below.
 					</div>
 					<div class="flex gap-2">
 						<input

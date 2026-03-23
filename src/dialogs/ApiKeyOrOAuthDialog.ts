@@ -144,7 +144,8 @@ export class ApiKeyOrOAuthDialog extends DialogBase {
 					${getOAuthProviderName(this.provider as OAuthProviderId)}
 				</div>
 				<div class="text-xs text-muted-foreground">
-					Complete login in the opened tab, then paste the code or callback URL below.
+					Waiting for login to complete. If the redirect was not detected automatically,
+					paste the callback URL or code below.
 				</div>
 				<div class="flex gap-2">
 					<input

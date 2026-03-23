@@ -60,7 +60,6 @@ export async function oauthLogin(
 ): Promise<OAuthCredentials> {
 	switch (provider) {
 		case "anthropic":
-			if (!onAnthropicCode) throw new Error("Anthropic login requires a code input callback");
 			return loginAnthropic(onAnthropicCode);
 		case "openai-codex":
 			return loginOpenAICodex();

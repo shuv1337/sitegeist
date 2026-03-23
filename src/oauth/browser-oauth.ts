@@ -87,14 +87,11 @@ function base64urlEncode(bytes: Uint8Array): string {
 }
 
 /**
- * Post a token request as application/x-www-form-urlencoded.
+ * Post JSON to a token endpoint, optionally through a CORS proxy.
  *
- * Using form-urlencoded (instead of JSON) is important for two reasons:
- * 1. It is what the OAuth 2.0 spec mandates for token endpoints.
- * 2. It qualifies as a CORS "simple request", so the browser skips the
- *    OPTIONS preflight. Some providers (Anthropic) aggressively rate-limit
- *    the token endpoint, and the extra preflight request can push us over
- *    the limit before the real POST even fires.
+ * Uses application/json because Anthropic's token endpoint requires it.
+ * CORS preflight is handled by declarativeNetRequest rules that inject
+ * permissive response headers + strip Origin from requests.
  */
 export async function postTokenRequest(
 	url: string,
@@ -105,8 +102,8 @@ export async function postTokenRequest(
 
 	const response = await fetch(targetUrl, {
 		method: "POST",
-		headers: { "Content-Type": "application/x-www-form-urlencoded" },
-		body: new URLSearchParams(body).toString(),
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(body),
 	});
 
 	if (!response.ok) {
