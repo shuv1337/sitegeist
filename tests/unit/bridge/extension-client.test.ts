@@ -86,7 +86,7 @@ describe("BridgeClient", () => {
 			token: "secret",
 			windowId: 4,
 			sessionId: "session-4",
-			debuggerEnabled: false,
+			sensitiveAccessEnabled: false,
 			onStateChange,
 		});
 
@@ -99,6 +99,7 @@ describe("BridgeClient", () => {
 			token: "secret",
 			windowId: 4,
 			sessionId: "session-4",
+			capabilities: expect.not.arrayContaining(["eval", "cookies"]),
 		});
 
 		socket.emitMessage({ type: "register_result", ok: true });
@@ -123,10 +124,13 @@ describe("BridgeClient", () => {
 			url: "ws://127.0.0.1:19285/ws",
 			token: "secret",
 			windowId: 1,
-			debuggerEnabled: true,
+			sensitiveAccessEnabled: true,
 		});
 		const socket = FakeWebSocket.instances.at(-1)!;
 		socket.emitOpen();
+		expect(JSON.parse(socket.sent[0])).toMatchObject({
+			capabilities: expect.arrayContaining(["eval", "cookies"]),
+		});
 		socket.emitMessage({ type: "register_result", ok: true });
 
 		socket.emitMessage({ id: 7, method: "status", params: { verbose: true } });
@@ -141,7 +145,7 @@ describe("BridgeClient", () => {
 			url: "ws://127.0.0.1:19285/ws",
 			token: "secret",
 			windowId: 1,
-			debuggerEnabled: true,
+			sensitiveAccessEnabled: true,
 		});
 		const socket = FakeWebSocket.instances.at(-1)!;
 		socket.emitOpen();
@@ -179,7 +183,7 @@ describe("BridgeClient", () => {
 			url: "ws://127.0.0.1:19285/ws",
 			token: "secret",
 			windowId: 2,
-			debuggerEnabled: false,
+			sensitiveAccessEnabled: false,
 			onStateChange,
 		});
 		const socket = FakeWebSocket.instances.at(-1)!;
@@ -192,7 +196,7 @@ describe("BridgeClient", () => {
 			url: "ws://127.0.0.1:19285/ws",
 			token: "secret",
 			windowId: 2,
-			debuggerEnabled: false,
+			sensitiveAccessEnabled: false,
 			onStateChange,
 		});
 		const retrySocket = FakeWebSocket.instances.at(-1)!;
@@ -212,7 +216,7 @@ describe("BridgeClient", () => {
 			url: "ws://127.0.0.1:19285/ws",
 			token: "secret",
 			windowId: 5,
-			debuggerEnabled: false,
+			sensitiveAccessEnabled: false,
 		});
 		const socket = FakeWebSocket.instances.at(-1)!;
 		client.sendEvent("active_tab_changed", { tabId: 1 });

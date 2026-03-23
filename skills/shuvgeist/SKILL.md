@@ -88,10 +88,20 @@ Important: code inside `browserjs()` runs in the page. Code outside it runs in t
 
 ### Eval (DevTools Protocol)
 
-Requires debugger mode enabled in the extension. Evaluates code directly via Chrome DevTools Protocol:
+Requires sensitive browser data access enabled in the Bridge settings. Evaluates code directly via Chrome DevTools Protocol:
 
 ```bash
 shuvgeist eval "document.title"
+```
+
+### Cookies
+
+Requires sensitive browser data access enabled in the Bridge settings. Reads all cookies for the current site, including HttpOnly cookies.
+
+Note: this requires the extension manifest to include the `cookies` permission and the unpacked extension to be reloaded after updating.
+
+```bash
+shuvgeist cookies
 ```
 
 ### Select element

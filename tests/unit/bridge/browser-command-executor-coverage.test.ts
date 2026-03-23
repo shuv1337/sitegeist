@@ -80,7 +80,7 @@ describe("BrowserCommandExecutor branch coverage", () => {
 
 	it("handles missing tab data, missing screenshot payloads, and unknown methods", async () => {
 		chrome.tabs.query.mockResolvedValue([{}]);
-		const executor = new BrowserCommandExecutor({ windowId: 7, debuggerEnabled: false });
+		const executor = new BrowserCommandExecutor({ windowId: 7, sensitiveAccessEnabled: false });
 		await expect(executor.status()).resolves.toMatchObject({ activeTab: { url: undefined, title: undefined, tabId: undefined } });
 
 		extractExecute.mockResolvedValue({ content: [], details: {} });

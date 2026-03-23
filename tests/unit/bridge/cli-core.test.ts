@@ -101,6 +101,10 @@ describe("cli-core", () => {
 			code: "return 1",
 			defaultTimeoutMs: 120_000,
 		});
+		expect(createCommandPlan("cookies", [], {}, readFileText)).toEqual({
+			kind: "cookies",
+			defaultTimeoutMs: 120_000,
+		});
 		expect(readFileText).toHaveBeenCalledWith("script.js");
 	});
 });

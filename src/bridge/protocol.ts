@@ -15,6 +15,7 @@ export const BridgeCapabilities = [
 	"repl",
 	"screenshot",
 	"eval",
+	"cookies",
 	"select_element",
 	"status",
 	"session_history",
@@ -25,8 +26,10 @@ export const BridgeCapabilities = [
 ] as const;
 export type BridgeCapability = (typeof BridgeCapabilities)[number];
 
-export function getBridgeCapabilities(debuggerEnabled: boolean): BridgeCapability[] {
-	return BridgeCapabilities.filter((capability) => debuggerEnabled || capability !== "eval");
+export function getBridgeCapabilities(sensitiveAccessEnabled: boolean): BridgeCapability[] {
+	return BridgeCapabilities.filter(
+		(capability) => sensitiveAccessEnabled || (capability !== "eval" && capability !== "cookies"),
+	);
 }
 
 export function isWriteMethod(method: BridgeMethod): boolean {
@@ -71,6 +74,7 @@ export const BridgeMethods = [
 	"repl",
 	"screenshot",
 	"eval",
+	"cookies",
 	"select_element",
 	"session_history",
 	"session_inject",
@@ -159,6 +163,10 @@ export interface ScreenshotParams {
 
 export interface EvalParams {
 	code: string;
+}
+
+export interface CookiesParams {
+	url?: string;
 }
 
 export interface SelectElementParams {

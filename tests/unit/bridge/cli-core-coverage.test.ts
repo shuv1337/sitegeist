@@ -42,6 +42,10 @@ describe("cli-core coverage cases", () => {
 			params: {},
 			defaultTimeoutMs: 60_000,
 		});
+		expect(createCommandPlan("cookies", [], {}, readFileText)).toEqual({
+			kind: "cookies",
+			defaultTimeoutMs: 120_000,
+		});
 		expect(createCommandPlan("select", [], {}, readFileText)).toEqual({
 			kind: "usage-error",
 			message: "Usage: shuvgeist select <message>",

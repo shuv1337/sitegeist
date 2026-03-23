@@ -81,7 +81,11 @@ describe("BrowserCommandExecutor", () => {
 
 	it("returns status with active tab and capabilities", async () => {
 		chrome.tabs.query.mockResolvedValue([{ id: 9, url: "https://example.com", title: "Example" }]);
-		const executor = new BrowserCommandExecutor({ windowId: 7, sessionId: "session-7", debuggerEnabled: false });
+		const executor = new BrowserCommandExecutor({
+			windowId: 7,
+			sessionId: "session-7",
+			sensitiveAccessEnabled: false,
+		});
 
 		await expect(executor.status()).resolves.toEqual({
 			ok: true,
@@ -109,7 +113,7 @@ describe("BrowserCommandExecutor", () => {
 		});
 		selectExecute.mockResolvedValue({ details: { selector: "#login" } });
 
-		const executor = new BrowserCommandExecutor({ windowId: 7, debuggerEnabled: true });
+		const executor = new BrowserCommandExecutor({ windowId: 7, sensitiveAccessEnabled: true });
 		await expect(executor.dispatch("navigate", { url: "https://example.com" })).resolves.toEqual({
 			finalUrl: "https://example.com",
 		});
@@ -130,14 +134,19 @@ describe("BrowserCommandExecutor", () => {
 		expect(selectExecute).toHaveBeenCalledWith("bridge", { message: "pick it" }, undefined);
 	});
 
-	it("gates eval by debugger mode and proxies debugger results", async () => {
-		const disabled = new BrowserCommandExecutor({ windowId: 1, debuggerEnabled: false });
+	it("gates eval/cookies by sensitive access and proxies debugger results", async () => {
+		const disabled = new BrowserCommandExecutor({ windowId: 1, sensitiveAccessEnabled: false });
 		await expect(disabled.evalCode({ code: "document.title" })).rejects.toMatchObject({ code: -32008 });
+		await expect(disabled.cookies({})).rejects.toMatchObject({ code: -32008 });
 
-		debuggerExecute.mockResolvedValue({ details: { value: "Example" } });
-		const enabled = new BrowserCommandExecutor({ windowId: 1, debuggerEnabled: true });
+		debuggerExecute.mockResolvedValueOnce({ details: { value: "Example" } }).mockResolvedValueOnce({
+			details: { value: [{ name: "auth_token", value: "secret" }] },
+		});
+		const enabled = new BrowserCommandExecutor({ windowId: 1, sensitiveAccessEnabled: true });
 		await expect(enabled.evalCode({ code: "document.title" })).resolves.toEqual({ value: "Example" });
 		expect(debuggerExecute).toHaveBeenCalledWith("bridge", { action: "eval", code: "document.title" }, undefined);
+		await expect(enabled.cookies({})).resolves.toEqual({ value: [{ name: "auth_token", value: "secret" }] });
+		expect(debuggerExecute).toHaveBeenCalledWith("bridge", { action: "cookies" }, undefined);
 	});
 
 	it("bridges session operations through the session adapter", async () => {
@@ -162,7 +171,7 @@ describe("BrowserCommandExecutor", () => {
 			getArtifacts: vi.fn(() => ({ sessionId: "session-1", artifacts: [{ filename: "note.md", content: "# hi", createdAt: "a", updatedAt: "b" }] })),
 			subscribe: vi.fn(),
 		};
-		const executor = new BrowserCommandExecutor({ windowId: 7, debuggerEnabled: true, sessionBridge });
+		const executor = new BrowserCommandExecutor({ windowId: 7, sensitiveAccessEnabled: true, sessionBridge });
 
 		await expect(executor.sessionHistory({ last: 1 })).resolves.toMatchObject({
 			sessionId: "session-1",
@@ -183,7 +192,7 @@ describe("BrowserCommandExecutor", () => {
 	});
 
 	it("rejects session operations without a session bridge and respects aborts", async () => {
-		const executor = new BrowserCommandExecutor({ windowId: 7, debuggerEnabled: true });
+		const executor = new BrowserCommandExecutor({ windowId: 7, sensitiveAccessEnabled: true });
 		await expect(executor.sessionHistory({})).rejects.toThrow("Session bridge is not available");
 		await expect(executor.sessionNew({})).rejects.toThrow("Session bridge is not available");
 		await expect(executor.sessionSetModel({ model: "anthropic/claude-opus-4-6" })).rejects.toThrow(
@@ -202,7 +211,7 @@ describe("BrowserCommandExecutor", () => {
 		};
 		const aborted = new AbortController();
 		aborted.abort();
-		const bridged = new BrowserCommandExecutor({ windowId: 7, debuggerEnabled: true, sessionBridge });
+		const bridged = new BrowserCommandExecutor({ windowId: 7, sensitiveAccessEnabled: true, sessionBridge });
 		await expect(
 			bridged.sessionInject({ expectedSessionId: "session-1", role: "user", content: "hello" }, aborted.signal),
 		).rejects.toMatchObject({ code: -32005, message: "Session injection aborted" });

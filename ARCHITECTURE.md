@@ -23,7 +23,7 @@ Chrome Extension (Manifest v3, minimum Chrome 141)
 
 ```
 storage, unlimitedStorage, activeTab, scripting, sidePanel,
-userScripts, webNavigation, debugger
+userScripts, webNavigation, debugger, cookies
 ```
 
 Host permissions: `http://*/*`, `https://*/*`, `http://localhost/*`, `http://127.0.0.1/*`
@@ -191,7 +191,7 @@ Images are resized to `maxWidth` (default 800px) using `OffscreenCanvas`, conver
 
 Two actions:
 - **`eval`**: Executes JavaScript in the MAIN world via `chrome.debugger.sendCommand("Runtime.evaluate")`. Required for accessing page-scoped variables, framework state (React, Vue), and `window` properties set by page scripts.
-- **`cookies`**: Gets all cookies for current domain via `chrome.cookies.getAll()`
+- **`cookies`**: Gets all cookies for current domain via `chrome.cookies.getAll()`, including HttpOnly cookies when the extension has the `cookies` permission.
 
 ### Skill Tool (`src/tools/skill.ts`)
 

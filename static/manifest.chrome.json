@@ -37,6 +37,7 @@
 		"userScripts",
 		"webNavigation",
 		"debugger",
+		"cookies",
 		"declarativeNetRequest"
 	],
 	"host_permissions": [

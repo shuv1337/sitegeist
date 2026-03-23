@@ -123,6 +123,13 @@ describe("BridgeServer", () => {
 				message: "Method 'navigate' is disabled on the active extension target",
 			},
 		});
+		await expect(sendRequestAndReadResponse(cli.ws, { id: 3, method: "cookies", params: {} })).resolves.toEqual({
+			id: 3,
+			error: {
+				code: ErrorCodes.CAPABILITY_DISABLED,
+				message: "Method 'cookies' is disabled on the active extension target",
+			},
+		});
 
 		extension.ws.close();
 		cli.ws.close();

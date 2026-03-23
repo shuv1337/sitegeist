@@ -42,6 +42,8 @@ describe("BridgeTab", () => {
 					return "ws://127.0.0.1:9999/ws";
 				case "bridge.token":
 					return "abc123";
+				case "bridge.sensitiveAccessEnabled":
+					return false;
 				default:
 					return null;
 			}
@@ -58,11 +60,14 @@ describe("BridgeTab", () => {
 		await tab.updateComplete;
 
 		const root = tab as unknown as HTMLElement;
-		const checkbox = root.querySelector('input[type="checkbox"]') as HTMLInputElement;
+		const checkboxes = root.querySelectorAll('input[type="checkbox"]');
+		const checkbox = checkboxes[0] as HTMLInputElement;
+		const sensitiveAccessCheckbox = checkboxes[1] as HTMLInputElement;
 		const inputs = root.querySelectorAll('input[type="text"], input[type="password"]');
 		const urlInput = inputs[0] as HTMLInputElement;
 		const tokenInput = inputs[1] as HTMLInputElement;
 		expect(checkbox.checked).toBe(true);
+		expect(sensitiveAccessCheckbox.checked).toBe(false);
 		expect(urlInput.value).toBe("ws://127.0.0.1:9999/ws");
 		expect(root.textContent).toContain("Disabled");
 
@@ -81,6 +86,18 @@ describe("BridgeTab", () => {
 			enabled: true,
 			url: "ws://bridge.local:19285/ws",
 			token: "updated-token",
+			sensitiveAccessEnabled: false,
+		});
+
+		sensitiveAccessCheckbox.checked = true;
+		sensitiveAccessCheckbox.dispatchEvent(new Event("change"));
+		await Promise.resolve();
+		expect(settingsSet).toHaveBeenCalledWith("bridge.sensitiveAccessEnabled", true);
+		expect(callback).toHaveBeenLastCalledWith({
+			enabled: true,
+			url: "ws://bridge.local:19285/ws",
+			token: "updated-token",
+			sensitiveAccessEnabled: true,
 		});
 
 		checkbox.checked = false;
@@ -91,6 +108,7 @@ describe("BridgeTab", () => {
 			enabled: false,
 			url: "ws://bridge.local:19285/ws",
 			token: "updated-token",
+			sensitiveAccessEnabled: true,
 		});
 
 		tab.remove();

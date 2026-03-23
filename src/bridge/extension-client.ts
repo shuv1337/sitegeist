@@ -19,7 +19,7 @@ export interface BridgeClientOptions {
 	token: string;
 	windowId: number;
 	sessionId?: string;
-	debuggerEnabled: boolean;
+	sensitiveAccessEnabled: boolean;
 	sessionBridge?: SessionBridgeAdapter;
 	onStateChange?: (state: BridgeConnectionState, detail?: string) => void;
 }
@@ -64,7 +64,7 @@ export class BridgeClient {
 		this.executor = new BrowserCommandExecutor({
 			windowId: options.windowId,
 			sessionId: options.sessionId,
-			debuggerEnabled: options.debuggerEnabled,
+			sensitiveAccessEnabled: options.sensitiveAccessEnabled,
 			sessionBridge: options.sessionBridge,
 		});
 		this.reconnectAttempts = 0;
@@ -115,7 +115,7 @@ export class BridgeClient {
 		// live connections racing against each other on the server.
 		this.closeAndDetachWebSocket();
 
-		const { url, token, windowId, sessionId, debuggerEnabled } = this.options;
+		const { url, token, windowId, sessionId, sensitiveAccessEnabled } = this.options;
 		this.setState("connecting");
 
 		bridgeLog("info", "connecting to bridge", {
@@ -146,7 +146,7 @@ export class BridgeClient {
 				token,
 				windowId,
 				sessionId,
-				capabilities: getBridgeCapabilities(debuggerEnabled),
+				capabilities: getBridgeCapabilities(sensitiveAccessEnabled),
 			};
 			ws.send(JSON.stringify(registration));
 		};
@@ -315,7 +315,7 @@ export class BridgeClient {
 			a.token === b.token &&
 			a.windowId === b.windowId &&
 			a.sessionId === b.sessionId &&
-			a.debuggerEnabled === b.debuggerEnabled
+			a.sensitiveAccessEnabled === b.sensitiveAccessEnabled
 		);
 	}
 

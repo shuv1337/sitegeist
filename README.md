@@ -13,6 +13,7 @@ Works on any website through a Chrome/Edge side panel, using the AI provider of 
 See [CHANGELOG.md](CHANGELOG.md) for the full list. Key additions in this repo:
 
 - **CLI-to-extension bridge** — external CLI agents can control the browser via `shuvgeist` commands
+- **Cookie bridge access** — `shuvgeist cookies` can read current-site cookies, including HttpOnly, when debugger mode is enabled
 - **WebP screenshot pipeline** — 95% smaller images for token-efficient LLM workflows
 - **Bridge settings tab** — configure and monitor the bridge connection from the sidepanel
 - **Self-hosted CORS proxy** — Docker-ready proxy server in `proxy/`
@@ -57,6 +58,8 @@ node dist-cli/shuvgeist.mjs --help
 
 The bridge lets external tools (Pi, Claude Code, coding agents, scripts) control your browser through the Shuvgeist sidepanel. Architecture: `CLI → Bridge Server (WebSocket relay) → Extension Sidepanel`.
 
+When sensitive browser data access is enabled in the Bridge settings, the bridge also exposes debugger-backed commands like `shuvgeist eval` and `shuvgeist cookies`.
+
 ### Quick start
 
 **1. Start the bridge server:**
@@ -94,8 +97,11 @@ shuvgeist repl 'return await browserjs(() => document.title)'
 # Run JS from a file
 shuvgeist repl -f scrape.js --write-files ./output
 
-# DevTools Protocol eval (requires debugger mode)
+# DevTools Protocol eval (requires sensitive browser data access in Bridge settings)
 shuvgeist eval "document.title"
+
+# Read cookies for the current site, including HttpOnly (requires sensitive browser data access in Bridge settings)
+shuvgeist cookies
 
 # Interactive element picker
 shuvgeist select "Click the login button"
@@ -116,6 +122,7 @@ All commands support `--json` for machine-readable output, useful for scripting 
 ```bash
 shuvgeist tabs --json
 shuvgeist screenshot --json  # returns base64 dataUrl
+shuvgeist cookies --json
 ```
 
 ### Exit codes

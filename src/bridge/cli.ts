@@ -11,6 +11,7 @@
  *   shuvgeist repl -f <file.js>
  *   shuvgeist screenshot [--out file.png]
  *   shuvgeist eval <code>
+ *   shuvgeist cookies
  *   shuvgeist select <message>
  *
  * Exit codes:
@@ -535,6 +536,7 @@ Usage:
   shuvgeist repl -f <file.js> [--json] [--write-files <dir>] [--timeout 120s]
   shuvgeist screenshot [--out file.png] [--max-width N] [--json] [--timeout 120s]
   shuvgeist eval <code> [--json] [--timeout 120s]
+  shuvgeist cookies [--json] [--timeout 120s]
   shuvgeist select <message> [--json] [--timeout none]
   shuvgeist session [--last N] [--json] [--follow]
   shuvgeist inject <text> [--role user|assistant] [--json]
@@ -616,6 +618,9 @@ async function main(): Promise<void> {
 			break;
 		case "screenshot":
 			await cmdScreenshot(flags);
+			break;
+		case "cookies":
+			await runOneShot("cookies", {}, flags, BridgeDefaults.SLOW_REQUEST_TIMEOUT_MS);
 			break;
 		case "session":
 			await cmdSession(flags);

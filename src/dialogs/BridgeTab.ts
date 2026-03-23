@@ -7,7 +7,12 @@ import type { BridgeConnectionState } from "../bridge/extension-client.js";
  * Callback for the BridgeTab to notify the sidepanel when bridge settings
  * change so it can connect/disconnect the BridgeClient.
  */
-export type BridgeSettingsChangeCallback = (settings: { enabled: boolean; url: string; token: string }) => void;
+export type BridgeSettingsChangeCallback = (settings: {
+	enabled: boolean;
+	url: string;
+	token: string;
+	sensitiveAccessEnabled: boolean;
+}) => void;
 
 /** Injected by the sidepanel so the tab can show live connection state. */
 let currentBridgeState: BridgeConnectionState = "disabled";
@@ -39,6 +44,7 @@ export class BridgeTab extends SettingsTab {
 	@state() private enabled = false;
 	@state() private url = "";
 	@state() private token = "";
+	@state() private sensitiveAccessEnabled = false;
 	@state() private bridgeState: BridgeConnectionState = "disabled";
 	@state() private bridgeDetail: string | undefined;
 
@@ -74,6 +80,7 @@ export class BridgeTab extends SettingsTab {
 		this.enabled = (await storage.settings.get<boolean>("bridge.enabled")) ?? false;
 		this.url = (await storage.settings.get<string>("bridge.url")) ?? "ws://127.0.0.1:19285/ws";
 		this.token = (await storage.settings.get<string>("bridge.token")) ?? "";
+		this.sensitiveAccessEnabled = (await storage.settings.get<boolean>("bridge.sensitiveAccessEnabled")) ?? false;
 		this.bridgeState = currentBridgeState;
 		this.bridgeDetail = currentBridgeDetail;
 	}
@@ -95,11 +102,18 @@ export class BridgeTab extends SettingsTab {
 		await getAppStorage().settings.set("bridge.token", token);
 	}
 
+	private async setSensitiveAccessEnabled(enabled: boolean) {
+		this.sensitiveAccessEnabled = enabled;
+		await getAppStorage().settings.set("bridge.sensitiveAccessEnabled", enabled);
+		this.notifyChange();
+	}
+
 	private notifyChange() {
 		settingsChangeCallback?.({
 			enabled: this.enabled,
 			url: this.url,
 			token: this.token,
+			sensitiveAccessEnabled: this.sensitiveAccessEnabled,
 		});
 	}
 
@@ -195,6 +209,30 @@ export class BridgeTab extends SettingsTab {
 							if (e.key === "Enter") this.handleFieldCommit();
 						}}
 					/>
+				</div>
+
+				<!-- Sensitive access toggle -->
+				<div class="p-3 rounded-lg bg-red-500/10 border border-red-500/30 space-y-3">
+					<div class="space-y-1">
+						<div class="text-sm font-medium text-foreground">Sensitive browser data access</div>
+						<p class="text-xs text-muted-foreground">
+							Allows the CLI bridge to use sensitive browser access, including
+							<code class="text-foreground">shuvgeist cookies</code> and
+							<code class="text-foreground">shuvgeist eval</code>.
+						</p>
+					</div>
+					<label class="flex items-center gap-3 cursor-pointer">
+						<input
+							type="checkbox"
+							class="w-4 h-4 rounded border-border accent-primary"
+							.checked=${this.sensitiveAccessEnabled}
+							@change=${(e: Event) => this.setSensitiveAccessEnabled((e.target as HTMLInputElement).checked)}
+						/>
+						<span class="text-sm font-medium text-foreground">Allow sensitive browser data access</span>
+					</label>
+					<p class="text-xs text-red-200">
+						Only enable this when you trust the CLI client and bridge server on this machine or network.
+					</p>
 				</div>
 
 				<!-- Help text -->

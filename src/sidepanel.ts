@@ -113,16 +113,15 @@ let chatPanel: ChatPanel;
 let agentUnsubscribe: (() => void) | undefined;
 let currentWindowId: number;
 
-const getBridgeDebuggerMode = async () => {
-	const stored = await chrome.storage.local.get("debuggerMode");
-	return Boolean(stored.debuggerMode);
+const getBridgeSensitiveAccessEnabled = async () => {
+	return (await storage.settings.get<boolean>("bridge.sensitiveAccessEnabled")) ?? false;
 };
 
 const syncBridgeConnection = async () => {
 	const bridgeEnabled = (await storage.settings.get<boolean>("bridge.enabled")) ?? false;
 	const bridgeUrl = (await storage.settings.get<string>("bridge.url")) ?? "ws://127.0.0.1:19285/ws";
 	const bridgeToken = (await storage.settings.get<string>("bridge.token")) ?? "";
-	const debuggerEnabled = await getBridgeDebuggerMode();
+	const sensitiveAccessEnabled = await getBridgeSensitiveAccessEnabled();
 
 	if (bridgeEnabled && bridgeUrl && bridgeToken) {
 		bridgeClient.connect({
@@ -130,7 +129,7 @@ const syncBridgeConnection = async () => {
 			token: bridgeToken,
 			windowId: currentWindowId,
 			sessionId: currentSessionId,
-			debuggerEnabled,
+			sensitiveAccessEnabled,
 			sessionBridge: sessionBridgeAdapter,
 			onStateChange: (state, detail) => {
 				setBridgeStateForTab(state, detail);

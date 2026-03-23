@@ -33,6 +33,7 @@ export type CliCommandPlan =
 	| { kind: "one-shot"; method: BridgeMethod; params: Record<string, unknown>; defaultTimeoutMs?: number }
 	| { kind: "repl"; code: string; defaultTimeoutMs: number }
 	| { kind: "screenshot"; params: Record<string, unknown>; defaultTimeoutMs: number }
+	| { kind: "cookies"; defaultTimeoutMs: number }
 	| { kind: "session"; follow: boolean; params: Record<string, unknown>; defaultTimeoutMs: number }
 	| { kind: "inject"; text: string; role: "user" | "assistant" }
 	| { kind: "usage-error"; message: string };
@@ -203,6 +204,11 @@ export function createCommandPlan(
 				defaultTimeoutMs: BridgeDefaults.SLOW_REQUEST_TIMEOUT_MS,
 			};
 		}
+		case "cookies":
+			return {
+				kind: "cookies",
+				defaultTimeoutMs: BridgeDefaults.SLOW_REQUEST_TIMEOUT_MS,
+			};
 		case "select": {
 			const message = positionals.join(" ");
 			if (!message) return { kind: "usage-error", message: "Usage: shuvgeist select <message>" };

@@ -18,6 +18,7 @@ import type {
 	BridgeReplResult,
 	BridgeScreenshotResult,
 	BridgeStatusResult,
+	CookiesParams,
 	EvalParams,
 	NavigateParams,
 	ReplParams,
@@ -39,7 +40,7 @@ import { buildSessionHistoryResult, type SessionBridgeAdapter } from "./session-
 export interface BrowserCommandExecutorOptions {
 	windowId: number;
 	sessionId?: string;
-	debuggerEnabled: boolean;
+	sensitiveAccessEnabled: boolean;
 	sessionBridge?: SessionBridgeAdapter;
 }
 
@@ -51,13 +52,13 @@ export class BrowserCommandExecutor {
 	private readonly debuggerTool: DebuggerTool;
 	private readonly windowId: number;
 	private readonly sessionId?: string;
-	private readonly debuggerEnabled: boolean;
+	private readonly sensitiveAccessEnabled: boolean;
 	private readonly sessionBridge?: SessionBridgeAdapter;
 
 	constructor(options: BrowserCommandExecutorOptions) {
 		this.windowId = options.windowId;
 		this.sessionId = options.sessionId;
-		this.debuggerEnabled = options.debuggerEnabled;
+		this.sensitiveAccessEnabled = options.sensitiveAccessEnabled;
 		this.sessionBridge = options.sessionBridge;
 
 		this.navigateTool = new NavigateTool();
@@ -98,6 +99,8 @@ export class BrowserCommandExecutor {
 				return this.screenshot((params ?? {}) as ScreenshotParams, signal);
 			case "eval":
 				return this.evalCode(params as unknown as EvalParams, signal);
+			case "cookies":
+				return this.cookies((params ?? {}) as CookiesParams, signal);
 			case "select_element":
 				return this.selectElement((params ?? {}) as SelectElementParams, signal);
 			case "session_history":
@@ -122,7 +125,7 @@ export class BrowserCommandExecutor {
 			ready: true,
 			windowId: this.windowId,
 			sessionId: this.sessionId,
-			capabilities: getBridgeCapabilities(this.debuggerEnabled),
+			capabilities: getBridgeCapabilities(this.sensitiveAccessEnabled),
 			activeTab: {
 				url: tab?.url,
 				title: tab?.title,
@@ -164,12 +167,22 @@ export class BrowserCommandExecutor {
 	}
 
 	async evalCode(params: EvalParams, signal?: AbortSignal): Promise<unknown> {
-		if (!this.debuggerEnabled) {
-			const error = new Error("Eval bridge command is disabled unless debugger mode is enabled");
+		if (!this.sensitiveAccessEnabled) {
+			const error = new Error("Eval bridge command is disabled unless sensitive browser data access is enabled");
 			(error as Error & { code?: number }).code = ErrorCodes.CAPABILITY_DISABLED;
 			throw error;
 		}
 		const result = await this.debuggerTool.execute("bridge", { action: "eval", code: params.code }, signal);
+		return result.details;
+	}
+
+	async cookies(_params: CookiesParams, signal?: AbortSignal): Promise<unknown> {
+		if (!this.sensitiveAccessEnabled) {
+			const error = new Error("Cookies bridge command is disabled unless sensitive browser data access is enabled");
+			(error as Error & { code?: number }).code = ErrorCodes.CAPABILITY_DISABLED;
+			throw error;
+		}
+		const result = await this.debuggerTool.execute("bridge", { action: "cookies" }, signal);
 		return result.details;
 	}
 
