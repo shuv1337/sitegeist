@@ -1,4 +1,4 @@
-import { getModel, type Model } from "@mariozechner/pi-ai";
+import { getModels, type Model } from "@mariozechner/pi-ai";
 import { CustomProvidersStore as BaseCustomProvidersStore, type CustomProvider } from "@mariozechner/pi-web-ui";
 
 const PROXX_PROVIDER_NAME = "proxx";
@@ -35,11 +35,27 @@ function isProxxProvider(provider: CustomProvider): boolean {
 	return provider.name.trim().toLowerCase() === PROXX_PROVIDER_NAME;
 }
 
+function getBuiltInOpenAIModel(modelId: string): Model<any> | null {
+	return getModels("openai").find((candidate) => candidate.id === modelId) ?? null;
+}
+
 function normalizeModelForProvider(provider: CustomProvider, model: Model<any>): Model<any> {
+	const normalizedBaseUrl = normalizeOpenAIBaseUrl(provider.baseUrl);
+	const builtInOpenAIModel = isProxxProvider(provider) ? getBuiltInOpenAIModel(model.id) : null;
+
+	if (builtInOpenAIModel) {
+		return {
+			...builtInOpenAIModel,
+			name: model.name,
+			provider: provider.name,
+			baseUrl: normalizedBaseUrl,
+		};
+	}
+
 	return {
 		...model,
 		provider: provider.name,
-		baseUrl: normalizeOpenAIBaseUrl(provider.baseUrl),
+		baseUrl: normalizedBaseUrl,
 	};
 }
 
@@ -47,12 +63,11 @@ function buildProxxOpenAIModel(
 	provider: CustomProvider,
 	modelId: (typeof PROXX_OPENAI_MODEL_IDS)[number],
 ): Model<any> | null {
-	const builtInModel = getModel("openai", modelId);
+	const builtInModel = getBuiltInOpenAIModel(modelId);
 	if (!builtInModel) return null;
 
 	return {
 		...builtInModel,
-		api: "openai-completions",
 		provider: provider.name,
 		baseUrl: normalizeOpenAIBaseUrl(provider.baseUrl),
 	};

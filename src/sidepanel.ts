@@ -197,6 +197,10 @@ const MINIMAX_EXTENSION_MODELS: Model<"anthropic-messages">[] = [
 
 registerModels(MINIMAX_EXTENSION_MODELS);
 
+function isProxxProviderName(providerName: string): boolean {
+	return providerName.trim().toLowerCase() === "proxx";
+}
+
 const DEFAULT_MODELS: Record<string, string> = {
 	"amazon-bedrock": "us.anthropic.claude-opus-4-6-v1",
 	anthropic: "claude-sonnet-4-6",
@@ -238,7 +242,8 @@ async function getAvailableProviderNames(): Promise<string[]> {
 
 	for (const provider of await storage.customProviders.getAll()) {
 		const hasModels = (provider.models?.length || 0) > 0;
-		if (hasModels || provider.apiKey) {
+		const hasCredentials = Boolean(provider.apiKey || (await storage.providerKeys.get(provider.name)));
+		if (hasModels || hasCredentials) {
 			providers.add(provider.name);
 		}
 	}
@@ -255,7 +260,18 @@ async function getApiKeyForProvider(providerName: string): Promise<string | unde
 	}
 
 	const customProvider = await getCustomProviderByName(providerName);
-	return customProvider?.apiKey;
+	if (customProvider?.apiKey) {
+		return customProvider.apiKey;
+	}
+
+	const builtInAlias = isProxxProviderName(providerName) ? await storage.providerKeys.get("proxx") : null;
+	if (builtInAlias) {
+		const proxyEnabled = await storage.settings.get<boolean>("proxy.enabled");
+		const proxyUrl = proxyEnabled ? (await storage.settings.get<string>("proxy.url")) || undefined : undefined;
+		return resolveApiKey(builtInAlias, "proxx", storage.providerKeys, proxyUrl);
+	}
+
+	return undefined;
 }
 
 async function selectDefaultModelForAvailableProvider() {
@@ -916,10 +932,15 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 			return chrome.runtime.getURL("sandbox.html");
 		},
 		onApiKeyRequired: async (provider: string) => {
+			const availableApiKey = await getApiKeyForProvider(provider);
+			if (availableApiKey) {
+				return true;
+			}
+
 			const customProvider = await getCustomProviderByName(provider);
 			if (customProvider) {
 				await openApiKeysDialog();
-				return Boolean((await getCustomProviderByName(provider))?.apiKey);
+				return Boolean(await getApiKeyForProvider(provider));
 			}
 			return await ApiKeyOrOAuthDialog.prompt(provider);
 		},

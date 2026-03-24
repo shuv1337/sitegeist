@@ -11,7 +11,7 @@
 ### Fixed
 
 - Anthropic Max subscription login now uses a manual code or callback URL paste flow instead of the broken automatic token-exchange redirect flow, restoring Claude Pro/Max sign-in and clarifying the UI prompts.
-- Proxx model catalogs now include the current GPT-5 and Codex families in the shipped preset, and imported Proxx providers are backfilled so the latest models remain selectable even when discovery is incomplete.
+- Proxx model catalogs now include the current GPT-5 and Codex families in the shipped preset, imported Proxx providers are backfilled with the built-in OpenAI model metadata so GPT and Codex traffic keeps using the correct upstream API, and the preset now explicitly marks GPT-family entries as `openai-responses`. Proxx credential checks now also honor the custom-provider token instead of opening the providers dialog before send, the selector preserves stored Proxx model metadata instead of replacing it with discovery-only placeholders, the shipped preset points at `http://shuvdev:8789/v1`, and Proxx imports default to discovery disabled so the saved model definitions remain authoritative.
 
 ## [1.0.7] - 2026-03-22
 
