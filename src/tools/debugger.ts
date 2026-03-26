@@ -11,6 +11,8 @@ import { type Static, Type } from "@sinclair/typebox";
 import { html } from "lit";
 import { createRef, ref } from "lit/directives/ref.js";
 import { Bug } from "lucide";
+import { resolveBrowserTarget } from "./helpers/browser-target.js";
+import { type DebuggerManager, getSharedDebuggerManager } from "./helpers/debugger-manager.js";
 
 // ============================================================================
 // TYPES
@@ -20,6 +22,8 @@ const debuggerSchema = Type.Object({
 	action: StringEnum(["eval", "cookies"], {
 		description: "Action to perform",
 	}),
+	tabId: Type.Optional(Type.Number({ description: "Optional tab ID override for bridge workflows" })),
+	frameId: Type.Optional(Type.Number({ description: "Optional frame ID override for MAIN-world evaluation" })),
 	code: Type.Optional(
 		Type.String({
 			description: "JavaScript code to execute in MAIN world context (required for eval action)",
@@ -30,7 +34,12 @@ const debuggerSchema = Type.Object({
 export type DebuggerParams = Static<typeof debuggerSchema>;
 
 export interface DebuggerResult {
-	value: any;
+	value: unknown;
+}
+
+export interface DebuggerToolOptions {
+	windowId?: number;
+	debuggerManager?: DebuggerManager;
 }
 
 // ============================================================================
@@ -63,9 +72,16 @@ ACTIONS:
 
 CRITICAL: Use browserjs() and repl tool for DOM manipulation. Use this ONLY for MAIN world access or browser APIs.`;
 	parameters = debuggerSchema;
+	windowId?: number;
+	private readonly debuggerManager: DebuggerManager;
+
+	constructor(options: DebuggerToolOptions = {}) {
+		this.windowId = options.windowId;
+		this.debuggerManager = options.debuggerManager ?? getSharedDebuggerManager();
+	}
 
 	async execute(
-		_toolCallId: string,
+		toolCallId: string,
 		args: DebuggerParams,
 		signal?: AbortSignal,
 	): Promise<{ content: Array<{ type: "text"; text: string }>; details: DebuggerResult }> {
@@ -73,15 +89,11 @@ CRITICAL: Use browserjs() and repl tool for DOM manipulation. Use this ONLY for 
 			throw new Error("Debugger command aborted");
 		}
 
-		// Get active tab
-		const [tab] = await chrome.tabs.query({
-			active: true,
-			currentWindow: true,
+		const { tab, tabId, frameId } = await resolveBrowserTarget({
+			windowId: this.windowId,
+			tabId: args.tabId,
+			frameId: args.frameId,
 		});
-
-		if (!tab || !tab.id) {
-			throw new Error("No active tab found");
-		}
 
 		try {
 			// Handle cookies action
@@ -108,13 +120,17 @@ CRITICAL: Use browserjs() and repl tool for DOM manipulation. Use this ONLY for 
 					);
 				}
 
+				if (!tab.url) {
+					throw new Error("Cannot get cookies for a tab without a URL");
+				}
+
 				try {
 					const cookies = await chrome.cookies.getAll({ url: tab.url });
-					const output = cookies.map((c: { name: string; value: string }) => `${c.name}: ${c.value}`).join("\n");
+					const output = cookies.map((cookie) => `${cookie.name}: ${cookie.value}`).join("\n");
 					const details: DebuggerResult = { value: cookies };
 					return { content: [{ type: "text", text: output }], details };
-				} catch (err: any) {
-					throw new Error(`Failed to get cookies: ${err.message}`);
+				} catch (error) {
+					throw new Error(`Failed to get cookies: ${error instanceof Error ? error.message : String(error)}`);
 				}
 			}
 
@@ -123,42 +139,38 @@ CRITICAL: Use browserjs() and repl tool for DOM manipulation. Use this ONLY for 
 				if (!args.code) {
 					throw new Error("eval action requires code parameter");
 				}
+				if (frameId !== 0) {
+					throw new Error("Frame-targeted eval requires frame context support");
+				}
 
-				// Attach debugger if not already attached
+				const owner = `debugger:${toolCallId}:${tabId}`;
+				await this.debuggerManager.acquire(tabId, owner);
 				try {
-					await chrome.debugger.attach({ tabId: tab.id }, "1.3");
-				} catch (err) {
-					// Already attached is fine
-					if (!(err instanceof Error) || !err.message?.includes("already attached")) {
-						throw err;
+					await this.debuggerManager.ensureDomain(tabId, "Runtime");
+					const result = await this.debuggerManager.sendCommand<unknown>(tabId, "Runtime.evaluate", {
+						expression: args.code,
+						returnByValue: true,
+					});
+					const details: DebuggerResult = { value: result };
+
+					let output = "";
+					if (result === undefined) {
+						output = "undefined";
+					} else if (typeof result === "string") {
+						output = result;
+					} else {
+						output = JSON.stringify(result, null, 2);
 					}
+
+					return { content: [{ type: "text", text: output }], details };
+				} finally {
+					await this.debuggerManager.release(tabId, owner);
 				}
-
-				// Execute code in MAIN world using Runtime.evaluate with returnByValue
-				const result = await chrome.debugger.sendCommand({ tabId: tab.id }, "Runtime.evaluate", {
-					expression: args.code,
-					returnByValue: true,
-				});
-
-				// Extract the actual value
-				const details: DebuggerResult = { value: result };
-
-				// Format output
-				let output = "";
-				if (result === undefined) {
-					output = "undefined";
-				} else if (typeof result === "string") {
-					output = result;
-				} else {
-					output = JSON.stringify(result, null, 2);
-				}
-
-				return { content: [{ type: "text", text: output }], details };
 			}
 
 			throw new Error(`Unknown action: ${args.action}`);
-		} catch (error: any) {
-			throw new Error(`Debugger error: ${error.message}`);
+		} catch (error) {
+			throw new Error(`Debugger error: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
 }

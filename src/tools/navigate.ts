@@ -12,6 +12,7 @@ import { getShuvgeistStorage } from "../storage/app-storage.js";
 import type { Skill } from "../storage/stores/skills-store.js";
 import { formatSkills } from "../utils/format-skills.js";
 import "../utils/i18n-extension.js";
+import { resolveTabTarget } from "./helpers/browser-target.js";
 
 // Track tool-initiated navigations to filter out duplicate navigation messages
 let isNavigating = false;
@@ -68,6 +69,11 @@ export class NavigateTool implements AgentTool<typeof navigateSchema, NavigateRe
 	name = "navigate";
 	description = NAVIGATE_TOOL_DESCRIPTION;
 	parameters = navigateSchema;
+	windowId?: number;
+
+	constructor(options: { windowId?: number } = {}) {
+		this.windowId = options.windowId;
+	}
 
 	async execute(
 		_toolCallId: string,
@@ -94,33 +100,21 @@ export class NavigateTool implements AgentTool<typeof navigateSchema, NavigateRe
 		}
 
 		// Get active tab for navigation actions
-		const [tab] = await chrome.tabs.query({
-			active: true,
-			currentWindow: true,
-		});
-
-		if (!tab || !tab.id) {
-			throw new Error("No active tab found");
-		}
+		const { tabId } = await resolveTabTarget({ windowId: this.windowId });
 
 		let finalUrl: string;
-		let targetTabId = tab.id;
+		let targetTabId = tabId;
 
 		markNavigationStart();
 		try {
 			if ("url" in args && args.url !== undefined) {
 				// Check if opening in new tab
 				if ("newTab" in args && args.newTab) {
-					finalUrl = await this.openInNewTab(args.url, signal);
-					// Get the newly created tab
-					const tabs = await chrome.tabs.query({});
-					const newTab = tabs.find((t: chrome.tabs.Tab) => t.url === finalUrl);
-					if (newTab?.id) {
-						targetTabId = newTab.id;
-					}
+					const newTab = await this.openInNewTab(args.url, signal);
+					finalUrl = newTab.finalUrl;
+					targetTabId = newTab.tabId;
 				} else {
-					// Navigate to URL in current tab
-					finalUrl = await this.navigateToUrl(tab.id, args.url, signal);
+					finalUrl = await this.navigateToUrl(tabId, args.url, signal);
 				}
 			} else {
 				throw new Error("Invalid navigation parameters");
@@ -216,7 +210,7 @@ export class NavigateTool implements AgentTool<typeof navigateSchema, NavigateRe
 		});
 	}
 
-	private async openInNewTab(url: string, signal?: AbortSignal): Promise<string> {
+	private async openInNewTab(url: string, signal?: AbortSignal): Promise<{ finalUrl: string; tabId: number }> {
 		if (signal?.aborted) {
 			throw new Error("Aborted");
 		}
@@ -238,7 +232,7 @@ export class NavigateTool implements AgentTool<typeof navigateSchema, NavigateRe
 				if (details.tabId === newTab.id && details.frameId === 0) {
 					chrome.webNavigation.onDOMContentLoaded.removeListener(listener);
 					if (abortListener) signal?.removeEventListener("abort", abortListener);
-					resolve(details.url);
+					resolve({ finalUrl: details.url, tabId: newTab.id! });
 				}
 			};
 

@@ -17,6 +17,29 @@ export const BridgeCapabilities = [
 	"eval",
 	"cookies",
 	"select_element",
+	"workflow_run",
+	"workflow_validate",
+	"page_snapshot",
+	"locate_by_role",
+	"locate_by_text",
+	"locate_by_label",
+	"ref_click",
+	"ref_fill",
+	"frame_list",
+	"frame_tree",
+	"network_start",
+	"network_stop",
+	"network_list",
+	"network_clear",
+	"network_stats",
+	"network_get",
+	"network_body",
+	"network_curl",
+	"device_emulate",
+	"device_reset",
+	"perf_metrics",
+	"perf_trace_start",
+	"perf_trace_stop",
 	"status",
 	"session_history",
 	"session_inject",
@@ -27,9 +50,14 @@ export const BridgeCapabilities = [
 export type BridgeCapability = (typeof BridgeCapabilities)[number];
 
 export function getBridgeCapabilities(sensitiveAccessEnabled: boolean): BridgeCapability[] {
-	return BridgeCapabilities.filter(
-		(capability) => sensitiveAccessEnabled || (capability !== "eval" && capability !== "cookies"),
-	);
+	const sensitiveCapabilities = new Set<BridgeCapability>([
+		"eval",
+		"cookies",
+		"network_get",
+		"network_body",
+		"network_curl",
+	]);
+	return BridgeCapabilities.filter((capability) => sensitiveAccessEnabled || !sensitiveCapabilities.has(capability));
 }
 
 export function isWriteMethod(method: BridgeMethod): boolean {
@@ -76,6 +104,29 @@ export const BridgeMethods = [
 	"eval",
 	"cookies",
 	"select_element",
+	"workflow_run",
+	"workflow_validate",
+	"page_snapshot",
+	"locate_by_role",
+	"locate_by_text",
+	"locate_by_label",
+	"ref_click",
+	"ref_fill",
+	"frame_list",
+	"frame_tree",
+	"network_start",
+	"network_stop",
+	"network_list",
+	"network_clear",
+	"network_stats",
+	"network_get",
+	"network_body",
+	"network_curl",
+	"device_emulate",
+	"device_reset",
+	"perf_metrics",
+	"perf_trace_start",
+	"perf_trace_stop",
 	"session_history",
 	"session_inject",
 	"session_new",
@@ -173,6 +224,110 @@ export interface SelectElementParams {
 	message?: string;
 }
 
+export interface TargetedBridgeParams {
+	tabId?: number;
+	frameId?: number;
+}
+
+export interface WorkflowRunParams {
+	workflow: unknown;
+	args?: Record<string, unknown>;
+	dryRun?: boolean;
+}
+
+export interface WorkflowValidateParams {
+	workflow: unknown;
+	args?: Record<string, unknown>;
+}
+
+export interface PageSnapshotBridgeParams extends TargetedBridgeParams {
+	maxEntries?: number;
+	includeHidden?: boolean;
+}
+
+export interface LocateByRoleParams extends TargetedBridgeParams {
+	role: string;
+	name?: string;
+	minScore?: number;
+	limit?: number;
+}
+
+export interface LocateByTextParams extends TargetedBridgeParams {
+	text: string;
+	minScore?: number;
+	limit?: number;
+}
+
+export interface LocateByLabelParams extends TargetedBridgeParams {
+	label: string;
+	minScore?: number;
+	limit?: number;
+}
+
+export interface RefClickParams extends TargetedBridgeParams {
+	refId: string;
+}
+
+export interface RefFillParams extends TargetedBridgeParams {
+	refId: string;
+	value: string;
+}
+
+export interface FrameListParams {
+	tabId?: number;
+}
+
+export interface NetworkStartParams {
+	tabId?: number;
+	maxEntries?: number;
+	maxBodyBytes?: number;
+}
+
+export interface NetworkListParams {
+	tabId?: number;
+	limit?: number;
+	search?: string;
+}
+
+export interface NetworkItemParams {
+	tabId?: number;
+	requestId: string;
+}
+
+export interface NetworkCurlParams extends NetworkItemParams {
+	includeSensitive?: boolean;
+}
+
+export interface DeviceEmulateParams {
+	tabId?: number;
+	preset?: string;
+	viewport?: {
+		width: number;
+		height: number;
+		deviceScaleFactor?: number;
+		mobile?: boolean;
+	};
+	touch?: boolean;
+	userAgent?: string;
+}
+
+export interface DeviceResetParams {
+	tabId?: number;
+}
+
+export interface PerfMetricsParams {
+	tabId?: number;
+}
+
+export interface PerfTraceStartParams {
+	tabId?: number;
+	autoStopMs?: number;
+}
+
+export interface PerfTraceStopParams {
+	tabId?: number;
+}
+
 export interface SessionHistoryParams {
 	last?: number;
 	afterMessageIndex?: number;
@@ -217,6 +372,161 @@ export interface BridgeReplFile {
 export interface BridgeReplResult {
 	output: string;
 	files: BridgeReplFile[];
+}
+
+export interface WorkflowRunResultWire {
+	ok: boolean;
+	aborted: boolean;
+	dryRun: boolean;
+	name?: string;
+	startedAt: string;
+	endedAt: string;
+	durationMs: number;
+	steps: Array<{
+		path: string;
+		type: "command" | "repeat" | "each";
+		status: "ok" | "error" | "aborted";
+		durationMs: number;
+		method?: string;
+		as?: string;
+		wait?: { type: "navigation" | "dom_stable" | "network_quiet"; timeoutMs?: number; quietMs?: number };
+		iterations?: number;
+		result?: unknown;
+		error?: string;
+	}>;
+	captured: Record<string, unknown>;
+	errors: string[];
+	truncation: {
+		stepResults: number;
+		captures: number;
+	};
+}
+
+export interface WorkflowValidateResult {
+	ok: boolean;
+	errors: string[];
+}
+
+export interface BridgeSnapshotEntry {
+	snapshotId: string;
+	tabId: number;
+	frameId: number;
+	tagName: string;
+	role?: string;
+	name?: string;
+	text?: string;
+	label?: string;
+	attributes: Record<string, string>;
+	selectorCandidates: string[];
+	ordinalPath: number[];
+	boundingBox: {
+		x: number;
+		y: number;
+		width: number;
+		height: number;
+	};
+	interactive: boolean;
+	headingLevel?: number;
+	landmark?: string;
+}
+
+export interface PageSnapshotBridgeResult {
+	tabId: number;
+	frameId: number;
+	url: string;
+	title: string;
+	generatedAt: number;
+	totalCandidates: number;
+	truncated: boolean;
+	entries: BridgeSnapshotEntry[];
+}
+
+export interface SnapshotLocatorMatchResult {
+	refId: string;
+	score: number;
+	reasons: string[];
+	entry: BridgeSnapshotEntry;
+}
+
+export interface FrameDescriptorResult {
+	frameId: number;
+	parentFrameId: number;
+	url: string;
+	errorOccurred?: boolean;
+}
+
+export interface FrameTreeNodeResult extends FrameDescriptorResult {
+	depth: number;
+	path: string;
+	children: FrameTreeNodeResult[];
+}
+
+export interface FrameTreeResult {
+	roots: FrameTreeNodeResult[];
+	orphans: FrameTreeNodeResult[];
+}
+
+export interface RefActionResult {
+	ok: true;
+	refId: string;
+	tabId: number;
+	frameId: number;
+	selector?: string;
+}
+
+export interface NetworkCaptureRequestSummary {
+	requestId: string;
+	method: string;
+	url: string;
+	status?: number;
+	resourceType?: string;
+	contentType?: string;
+	startedAt: number;
+	endedAt?: number;
+	durationMs?: number;
+	requestHeaders?: Record<string, string>;
+	responseHeaders?: Record<string, string>;
+	requestBodySize?: number;
+	responseBodySize?: number;
+	hasRequestBody?: boolean;
+	hasResponseBody?: boolean;
+}
+
+export interface NetworkCaptureStats {
+	tabId: number;
+	active: boolean;
+	requestCount: number;
+	storedBodyBytes: number;
+	evictedRequests: number;
+}
+
+export interface DeviceEmulationResult {
+	ok: true;
+	tabId: number;
+	preset?: string;
+	viewport?: {
+		width: number;
+		height: number;
+		deviceScaleFactor?: number;
+		mobile?: boolean;
+	};
+	touch?: boolean;
+	userAgent?: string;
+}
+
+export interface PerfMetricsResult {
+	tabId: number;
+	metrics: Array<{ name: string; value: number }>;
+}
+
+export interface PerfTraceResult {
+	ok: true;
+	tabId: number;
+	startedAt: string;
+	endedAt: string;
+	durationMs: number;
+	eventCount: number;
+	traceEvents: unknown[];
 }
 
 export interface BridgeServerStatus {
@@ -405,6 +715,9 @@ export const BridgeDefaults = {
 	STATUS_TIMEOUT_MS: 10_000,
 	REQUEST_TIMEOUT_MS: 60_000,
 	SLOW_REQUEST_TIMEOUT_MS: 120_000,
+	WORKFLOW_TIMEOUT_MS: 600_000,
+	CAPTURE_TIMEOUT_MS: 0,
+	TRACE_TIMEOUT_MS: 120_000,
 	/** Grace period (ms) for a newly connected socket to send a register message. */
 	REGISTER_TIMEOUT_MS: 10_000,
 } as const;

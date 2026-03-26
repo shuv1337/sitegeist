@@ -49,8 +49,10 @@ import {
 	type CliConfigFile,
 	type RegisterResult,
 	type SessionHistoryResult,
+	type WorkflowRunResultWire,
 } from "./protocol.js";
 import { BridgeServer } from "./server.js";
+import { formatWorkflowValidationErrors, validateWorkflowDefinition } from "./workflow-schema.js";
 
 declare const __SHUVGEIST_VERSION__: string;
 const VERSION = typeof __SHUVGEIST_VERSION__ !== "undefined" ? __SHUVGEIST_VERSION__ : "dev";
@@ -514,6 +516,80 @@ async function cmdInject(
 	}
 }
 
+async function cmdWorkflow(
+	action: "run" | "validate",
+	workflow: unknown,
+	args: Record<string, unknown>,
+	flags: {
+		url?: string;
+		host?: string;
+		port?: string;
+		token?: string;
+		json?: boolean;
+		timeout?: string;
+	},
+	defaultTimeoutMs: number,
+	dryRun?: boolean,
+): Promise<void> {
+	const jsonMode = flags.json || false;
+	const validation = validateWorkflowDefinition(workflow);
+	if (!validation.ok) {
+		const errors = formatWorkflowValidationErrors(validation.errors);
+		if (jsonMode) {
+			console.log(JSON.stringify({ ok: false, errors }, null, 2));
+		} else {
+			for (const error of errors) console.error(error);
+		}
+		process.exit(1);
+	}
+
+	if (action === "validate" || dryRun) {
+		const result = { ok: true, errors: [] as string[] };
+		if (jsonMode) {
+			console.log(JSON.stringify(result, null, 2));
+		} else {
+			console.log(dryRun ? "Workflow dry-run validation passed" : "Workflow validation passed");
+		}
+		process.exit(0);
+	}
+
+	try {
+		const response = await cmdOneShot(
+			"workflow_run",
+			{
+				workflow,
+				args,
+			},
+			flags,
+			defaultTimeoutMs,
+		);
+		if (response.error) {
+			printResult(response, jsonMode);
+			process.exit(exitCodeForResponse(response));
+		}
+		const result = response.result as WorkflowRunResultWire;
+		if (jsonMode) {
+			console.log(JSON.stringify(result, null, 2));
+		} else {
+			console.log(`Workflow: ${result.name || "(unnamed)"}`);
+			console.log(`OK: ${result.ok ? "yes" : "no"}`);
+			console.log(`Aborted: ${result.aborted ? "yes" : "no"}`);
+			console.log(`Duration: ${result.durationMs}ms`);
+			console.log(`Steps: ${result.steps.length}`);
+			if (result.errors.length > 0) {
+				console.log("");
+				for (const error of result.errors) {
+					console.log(`error: ${error}`);
+				}
+			}
+		}
+		process.exit(result.ok ? 0 : 1);
+	} catch (err) {
+		printError(err instanceof Error ? err.message : String(err), jsonMode);
+		process.exit(isNetworkOrConfigError(err) ? 3 : 1);
+	}
+}
+
 function generateToken(): string {
 	const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
 	let result = "";
@@ -538,6 +614,14 @@ Usage:
   shuvgeist eval <code> [--json] [--timeout 120s]
   shuvgeist cookies [--json] [--timeout 120s]
   shuvgeist select <message> [--json] [--timeout none]
+  shuvgeist workflow <run|validate> (--file workflow.json | --inline '{...}') [--arg key=value]
+  shuvgeist snapshot [--tab-id N] [--frame-id N] [--max-entries N] [--json]
+  shuvgeist locate <role|text|label> <query> [--tab-id N] [--frame-id N] [--json]
+  shuvgeist ref <click|fill> <refId> [--value text] [--tab-id N] [--frame-id N] [--json]
+  shuvgeist frame <list|tree> [--tab-id N] [--json]
+  shuvgeist network <start|stop|list|get|body|curl|clear|stats> [...] [--json]
+  shuvgeist device <emulate|reset> [...] [--json]
+  shuvgeist perf <metrics|trace-start|trace-stop> [...] [--json]
   shuvgeist session [--last N] [--json] [--follow]
   shuvgeist inject <text> [--role user|assistant] [--json]
   shuvgeist new-session [provider/model-id] [--json]
@@ -550,6 +634,28 @@ Global options:
   --port <port>       Bridge server port (for constructing URL)
   --token <token>     Bridge auth token
   --timeout <value>   Timeout (e.g. 30s, 2m, 1500ms, none)
+  --file <path>       Read REPL or workflow source from file
+  --inline <json>     Inline workflow JSON
+  --arg key=value     Workflow argument (repeatable)
+  --dry-run           Validate workflow locally without bridge execution
+  --tab-id <id>       Explicit tab target
+  --frame-id <id>     Explicit frame target
+  --max-entries <N>   Snapshot entry cap
+  --include-hidden    Include hidden snapshot entries
+  --limit <N>         Limit locator/network results
+  --min-score <n>     Locator minimum score
+  --name <text>       Accessible name filter for role locators
+  --value <text>      Ref fill value
+  --search <text>     Network list filter
+  --include-sensitive Include sensitive data in network curl export
+  --preset <name>     Device preset
+  --width <px>        Device viewport width
+  --height <px>       Device viewport height
+  --dpr <n>           Device scale factor
+  --mobile            Mark viewport as mobile
+  --touch             Enable touch emulation
+  --user-agent <ua>   Override user agent
+  --auto-stop <ms>    Perf trace auto-stop window
   --json              Machine-readable JSON output
 
 Config file: ~/.shuvgeist/bridge.json
@@ -584,6 +690,12 @@ async function main(): Promise<void> {
 		const arg = rest[i];
 		if (arg === "--json") globalFlags.json = true;
 		else if (arg === "--new-tab") globalFlags.newTab = true;
+		else if (arg === "--dry-run") globalFlags.dryRun = true;
+		else if (arg === "--follow") globalFlags.follow = true;
+		else if (arg === "--include-hidden") globalFlags.includeHidden = true;
+		else if (arg === "--include-sensitive") globalFlags.includeSensitive = true;
+		else if (arg === "--mobile") globalFlags.mobile = true;
+		else if (arg === "--touch") globalFlags.touch = true;
 		else if (arg === "--url" && i + 1 < rest.length) globalFlags.url = rest[++i];
 		else if (arg === "--host" && i + 1 < rest.length) globalFlags.host = rest[++i];
 		else if (arg === "--port" && i + 1 < rest.length) globalFlags.port = rest[++i];
@@ -594,7 +706,26 @@ async function main(): Promise<void> {
 		else if (arg === "--write-files" && i + 1 < rest.length) globalFlags.writeFiles = rest[++i];
 		else if (arg === "--last" && i + 1 < rest.length) globalFlags.last = rest[++i];
 		else if (arg === "--role" && i + 1 < rest.length) globalFlags.role = rest[++i];
-		else if (arg === "--follow") globalFlags.follow = true;
+		else if (arg === "--inline" && i + 1 < rest.length) globalFlags.inline = rest[++i];
+		else if (arg === "--arg" && i + 1 < rest.length) {
+			if (!globalFlags.arg) {
+				globalFlags.arg = [];
+			}
+			globalFlags.arg.push(rest[++i]);
+		} else if (arg === "--tab-id" && i + 1 < rest.length) globalFlags.tabId = rest[++i];
+		else if (arg === "--frame-id" && i + 1 < rest.length) globalFlags.frameId = rest[++i];
+		else if (arg === "--max-entries" && i + 1 < rest.length) globalFlags.maxEntries = rest[++i];
+		else if (arg === "--limit" && i + 1 < rest.length) globalFlags.limit = rest[++i];
+		else if (arg === "--min-score" && i + 1 < rest.length) globalFlags.minScore = rest[++i];
+		else if (arg === "--name" && i + 1 < rest.length) globalFlags.name = rest[++i];
+		else if (arg === "--value" && i + 1 < rest.length) globalFlags.value = rest[++i];
+		else if (arg === "--search" && i + 1 < rest.length) globalFlags.search = rest[++i];
+		else if (arg === "--preset" && i + 1 < rest.length) globalFlags.preset = rest[++i];
+		else if (arg === "--width" && i + 1 < rest.length) globalFlags.width = rest[++i];
+		else if (arg === "--height" && i + 1 < rest.length) globalFlags.height = rest[++i];
+		else if (arg === "--dpr" && i + 1 < rest.length) globalFlags.dpr = rest[++i];
+		else if (arg === "--user-agent" && i + 1 < rest.length) globalFlags.userAgent = rest[++i];
+		else if (arg === "--auto-stop" && i + 1 < rest.length) globalFlags.autoStop = rest[++i];
 		else if (arg === "-f" && i + 1 < rest.length) globalFlags.file = rest[++i];
 		else positionals.push(arg);
 		i++;
@@ -621,6 +752,9 @@ async function main(): Promise<void> {
 			break;
 		case "cookies":
 			await runOneShot("cookies", {}, flags, BridgeDefaults.SLOW_REQUEST_TIMEOUT_MS);
+			break;
+		case "workflow":
+			await cmdWorkflow(plan.action, plan.workflow, plan.args, flags, plan.defaultTimeoutMs, plan.dryRun);
 			break;
 		case "session":
 			await cmdSession(flags);

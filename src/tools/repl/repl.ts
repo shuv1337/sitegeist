@@ -28,6 +28,7 @@ export async function executeJavaScript(
 	signal?: AbortSignal,
 	sandboxUrlProvider?: () => string,
 	taskName?: string,
+	overlayWindowId?: number,
 ): Promise<{ output: string; files?: SandboxFile[] }> {
 	if (!code) {
 		throw new Error("Code parameter is required");
@@ -63,7 +64,7 @@ export async function executeJavaScript(
 	let overlayTabId: number | undefined;
 	if (usesBrowserjs) {
 		try {
-			overlayTabId = await injectOverlayForActiveTab(taskName || "Executing JavaScript");
+			overlayTabId = await injectOverlayForActiveTab(taskName || "Executing JavaScript", overlayWindowId);
 		} catch (error) {
 			console.warn("[REPL] Failed to inject overlay:", error);
 			// Continue execution even if overlay fails
@@ -128,7 +129,7 @@ export async function executeJavaScript(
 
 		// Remove overlay on success (if it was injected)
 		if (usesBrowserjs) {
-			await removeOverlayForActiveTab();
+			await removeOverlayForActiveTab(overlayWindowId);
 		}
 
 		return {
@@ -139,7 +140,7 @@ export async function executeJavaScript(
 		// Clean up on error
 		sandbox.remove();
 		if (usesBrowserjs) {
-			await removeOverlayForActiveTab();
+			await removeOverlayForActiveTab(overlayWindowId);
 		}
 		throw new Error((error as Error).message || "Execution failed");
 	}
@@ -179,10 +180,12 @@ interface ReplResult {
 export function createReplTool(): AgentTool<typeof replSchema, ReplToolResult> & {
 	runtimeProvidersFactory?: () => SandboxRuntimeProvider[];
 	sandboxUrlProvider?: () => string;
+	overlayWindowId?: number;
 } {
 	const tool: AgentTool<typeof replSchema, ReplToolResult> & {
 		runtimeProvidersFactory?: () => SandboxRuntimeProvider[];
 		sandboxUrlProvider?: () => string;
+		overlayWindowId?: number;
 	} = {
 		label: "JavaScript REPL",
 		name: "repl",
@@ -206,6 +209,7 @@ export function createReplTool(): AgentTool<typeof replSchema, ReplToolResult> &
 				signal,
 				this.sandboxUrlProvider,
 				args.title,
+				this.overlayWindowId,
 			);
 			// Convert files to JSON-serializable with base64 payloads
 			const files = (result.files || []).map((f) => {

@@ -1,3 +1,4 @@
+import { resolveTabTarget } from "../helpers/browser-target.js";
 import { createOverlayScript, removeOverlayScript } from "./overlay-content.js";
 
 const OVERLAY_WORLD_ID = "shuvgeist-repl-overlay";
@@ -7,17 +8,9 @@ const OVERLAY_WORLD_ID = "shuvgeist-repl-overlay";
  * @returns Tab ID of the active tab in the current window
  * @throws Error if no active tab is found
  */
-async function getActiveTabId(): Promise<number> {
-	const [tab] = await chrome.tabs.query({
-		active: true,
-		currentWindow: true,
-	});
-
-	if (!tab || !tab.id) {
-		throw new Error("No active tab found");
-	}
-
-	return tab.id;
+async function getActiveTabId(windowId?: number): Promise<number> {
+	const { tabId } = await resolveTabTarget({ windowId });
+	return tabId;
 }
 
 /**
@@ -101,8 +94,8 @@ export async function removeOverlay(tabId: number): Promise<void> {
  * @param taskName - Name of the task being executed
  * @returns Tab ID where overlay was injected
  */
-export async function injectOverlayForActiveTab(taskName: string): Promise<number> {
-	const tabId = await getActiveTabId();
+export async function injectOverlayForActiveTab(taskName: string, windowId?: number): Promise<number> {
+	const tabId = await getActiveTabId(windowId);
 	await injectOverlay(tabId, taskName);
 	return tabId;
 }
@@ -111,9 +104,9 @@ export async function injectOverlayForActiveTab(taskName: string): Promise<numbe
  * Remove overlay from the currently active tab.
  * Automatically determines the active tab.
  */
-export async function removeOverlayForActiveTab(): Promise<void> {
+export async function removeOverlayForActiveTab(windowId?: number): Promise<void> {
 	try {
-		const tabId = await getActiveTabId();
+		const tabId = await getActiveTabId(windowId);
 		await removeOverlay(tabId);
 	} catch (error) {
 		// Tab might have been closed

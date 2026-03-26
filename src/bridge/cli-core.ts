@@ -16,6 +16,27 @@ export interface CliFlags {
 	follow?: boolean;
 	file?: string;
 	newTab?: boolean;
+	inline?: string;
+	arg?: string[];
+	dryRun?: boolean;
+	tabId?: string;
+	frameId?: string;
+	maxEntries?: string;
+	includeHidden?: boolean;
+	limit?: string;
+	minScore?: string;
+	name?: string;
+	value?: string;
+	search?: string;
+	includeSensitive?: boolean;
+	preset?: string;
+	width?: string;
+	height?: string;
+	dpr?: string;
+	mobile?: boolean;
+	touch?: boolean;
+	userAgent?: string;
+	autoStop?: string;
 }
 
 export interface CliEnvironment {
@@ -34,9 +55,47 @@ export type CliCommandPlan =
 	| { kind: "repl"; code: string; defaultTimeoutMs: number }
 	| { kind: "screenshot"; params: Record<string, unknown>; defaultTimeoutMs: number }
 	| { kind: "cookies"; defaultTimeoutMs: number }
+	| {
+			kind: "workflow";
+			action: "run" | "validate";
+			workflow: unknown;
+			args: Record<string, unknown>;
+			defaultTimeoutMs: number;
+			dryRun?: boolean;
+	  }
 	| { kind: "session"; follow: boolean; params: Record<string, unknown>; defaultTimeoutMs: number }
 	| { kind: "inject"; text: string; role: "user" | "assistant" }
 	| { kind: "usage-error"; message: string };
+
+function parseNumberFlag(value: string | undefined): number | undefined {
+	if (!value) return undefined;
+	const parsed = Number.parseInt(value, 10);
+	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function applyTargetFlags(flags: CliFlags, params: Record<string, unknown>): void {
+	const tabId = parseNumberFlag(flags.tabId);
+	const frameId = parseNumberFlag(flags.frameId);
+	if (typeof tabId === "number") params.tabId = tabId;
+	if (typeof frameId === "number") params.frameId = frameId;
+}
+
+function parseWorkflowArgs(values: string[] | undefined): Record<string, unknown> {
+	const parsed: Record<string, unknown> = {};
+	for (const value of values ?? []) {
+		const separator = value.indexOf("=");
+		if (separator <= 0) continue;
+		const key = value.slice(0, separator).trim();
+		const raw = value.slice(separator + 1);
+		if (!key) continue;
+		try {
+			parsed[key] = JSON.parse(raw);
+		} catch {
+			parsed[key] = raw;
+		}
+	}
+	return parsed;
+}
 
 export function resolveBridgeUrl(
 	flags: Pick<CliFlags, "url" | "host" | "port">,
@@ -197,10 +256,12 @@ export function createCommandPlan(
 		case "eval": {
 			const code = positionals.join(" ");
 			if (!code) return { kind: "usage-error", message: "Usage: shuvgeist eval <code>" };
+			const params: Record<string, unknown> = { code };
+			applyTargetFlags(flags, params);
 			return {
 				kind: "one-shot",
 				method: "eval",
-				params: { code },
+				params,
 				defaultTimeoutMs: BridgeDefaults.SLOW_REQUEST_TIMEOUT_MS,
 			};
 		}
@@ -260,6 +321,293 @@ export function createCommandPlan(
 				params: {},
 				defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
 			};
+		case "workflow": {
+			const action = positionals[0];
+			if (action !== "run" && action !== "validate") {
+				return {
+					kind: "usage-error",
+					message:
+						"Usage: shuvgeist workflow <run|validate> (--file file.json | --inline '{...}') [--arg key=value]",
+				};
+			}
+			let source = flags.inline;
+			if (!source && flags.file) {
+				source = readFileText(flags.file);
+			}
+			if (!source) {
+				return { kind: "usage-error", message: "Workflow source required via --file or --inline" };
+			}
+			let workflow: unknown;
+			try {
+				workflow = JSON.parse(source);
+			} catch (error) {
+				return {
+					kind: "usage-error",
+					message: `Workflow JSON parse error: ${error instanceof Error ? error.message : String(error)}`,
+				};
+			}
+			return {
+				kind: "workflow",
+				action,
+				workflow,
+				args: parseWorkflowArgs(flags.arg),
+				dryRun: Boolean(flags.dryRun),
+				defaultTimeoutMs: BridgeDefaults.WORKFLOW_TIMEOUT_MS,
+			};
+		}
+		case "snapshot": {
+			const params: Record<string, unknown> = {};
+			applyTargetFlags(flags, params);
+			if (flags.maxEntries) params.maxEntries = Number.parseInt(flags.maxEntries, 10);
+			if (flags.includeHidden) params.includeHidden = true;
+			return {
+				kind: "one-shot",
+				method: "page_snapshot",
+				params,
+				defaultTimeoutMs: BridgeDefaults.SLOW_REQUEST_TIMEOUT_MS,
+			};
+		}
+		case "locate": {
+			const mode = positionals[0];
+			const query = positionals.slice(1).join(" ");
+			if (!mode || !query) {
+				return {
+					kind: "usage-error",
+					message: "Usage: shuvgeist locate <role|text|label> <query> [--tab-id N] [--frame-id N]",
+				};
+			}
+			const params: Record<string, unknown> = {};
+			applyTargetFlags(flags, params);
+			if (flags.limit) params.limit = Number.parseInt(flags.limit, 10);
+			if (flags.minScore) params.minScore = Number.parseFloat(flags.minScore);
+			if (mode === "role") {
+				params.role = query;
+				if (flags.name) params.name = flags.name;
+				return {
+					kind: "one-shot",
+					method: "locate_by_role",
+					params,
+					defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+				};
+			}
+			if (mode === "text") {
+				params.text = query;
+				return {
+					kind: "one-shot",
+					method: "locate_by_text",
+					params,
+					defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+				};
+			}
+			if (mode === "label") {
+				params.label = query;
+				return {
+					kind: "one-shot",
+					method: "locate_by_label",
+					params,
+					defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+				};
+			}
+			return { kind: "usage-error", message: "Usage: shuvgeist locate <role|text|label> <query>" };
+		}
+		case "ref": {
+			const action = positionals[0];
+			const refId = positionals[1];
+			if (!action || !refId) {
+				return { kind: "usage-error", message: "Usage: shuvgeist ref <click|fill> <refId> [--value text]" };
+			}
+			const params: Record<string, unknown> = { refId };
+			applyTargetFlags(flags, params);
+			if (action === "click") {
+				return {
+					kind: "one-shot",
+					method: "ref_click",
+					params,
+					defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+				};
+			}
+			if (action === "fill") {
+				if (typeof flags.value !== "string") {
+					return { kind: "usage-error", message: "Usage: shuvgeist ref fill <refId> --value <text>" };
+				}
+				params.value = flags.value;
+				return {
+					kind: "one-shot",
+					method: "ref_fill",
+					params,
+					defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+				};
+			}
+			return { kind: "usage-error", message: "Usage: shuvgeist ref <click|fill> <refId>" };
+		}
+		case "frame": {
+			const action = positionals[0];
+			const params: Record<string, unknown> = {};
+			if (flags.tabId) params.tabId = Number.parseInt(flags.tabId, 10);
+			if (action === "list") {
+				return {
+					kind: "one-shot",
+					method: "frame_list",
+					params,
+					defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+				};
+			}
+			if (action === "tree") {
+				return {
+					kind: "one-shot",
+					method: "frame_tree",
+					params,
+					defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+				};
+			}
+			return { kind: "usage-error", message: "Usage: shuvgeist frame <list|tree> [--tab-id N]" };
+		}
+		case "network": {
+			const action = positionals[0];
+			const params: Record<string, unknown> = {};
+			if (flags.tabId) params.tabId = Number.parseInt(flags.tabId, 10);
+			if (flags.limit) params.limit = Number.parseInt(flags.limit, 10);
+			if (flags.search) params.search = flags.search;
+			const requestId = positionals[1];
+			switch (action) {
+				case "start":
+					return {
+						kind: "one-shot",
+						method: "network_start",
+						params,
+						defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+					};
+				case "stop":
+					return {
+						kind: "one-shot",
+						method: "network_stop",
+						params,
+						defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+					};
+				case "list":
+					return {
+						kind: "one-shot",
+						method: "network_list",
+						params,
+						defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+					};
+				case "clear":
+					return {
+						kind: "one-shot",
+						method: "network_clear",
+						params,
+						defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+					};
+				case "stats":
+					return {
+						kind: "one-shot",
+						method: "network_stats",
+						params,
+						defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+					};
+				case "get":
+					if (!requestId) return { kind: "usage-error", message: "Usage: shuvgeist network get <requestId>" };
+					return {
+						kind: "one-shot",
+						method: "network_get",
+						params: { ...params, requestId },
+						defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+					};
+				case "body":
+					if (!requestId) return { kind: "usage-error", message: "Usage: shuvgeist network body <requestId>" };
+					return {
+						kind: "one-shot",
+						method: "network_body",
+						params: { ...params, requestId },
+						defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+					};
+				case "curl":
+					if (!requestId)
+						return {
+							kind: "usage-error",
+							message: "Usage: shuvgeist network curl <requestId> [--include-sensitive]",
+						};
+					if (flags.includeSensitive) params.includeSensitive = true;
+					return {
+						kind: "one-shot",
+						method: "network_curl",
+						params: { ...params, requestId },
+						defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+					};
+				default:
+					return {
+						kind: "usage-error",
+						message: "Usage: shuvgeist network <start|stop|list|get|body|curl|clear|stats>",
+					};
+			}
+		}
+		case "device": {
+			const action = positionals[0];
+			const params: Record<string, unknown> = {};
+			if (flags.tabId) params.tabId = Number.parseInt(flags.tabId, 10);
+			if (action === "reset") {
+				return {
+					kind: "one-shot",
+					method: "device_reset",
+					params,
+					defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+				};
+			}
+			if (action !== "emulate") {
+				return { kind: "usage-error", message: "Usage: shuvgeist device <emulate|reset> ..." };
+			}
+			if (flags.preset) params.preset = flags.preset;
+			const width = parseNumberFlag(flags.width);
+			const height = parseNumberFlag(flags.height);
+			const dpr = parseNumberFlag(flags.dpr);
+			if (typeof width === "number" && typeof height === "number") {
+				params.viewport = {
+					width,
+					height,
+					deviceScaleFactor: dpr,
+					mobile: Boolean(flags.mobile),
+				};
+			}
+			if (flags.touch) params.touch = true;
+			if (flags.userAgent) params.userAgent = flags.userAgent;
+			return {
+				kind: "one-shot",
+				method: "device_emulate",
+				params,
+				defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+			};
+		}
+		case "perf": {
+			const action = positionals[0];
+			const params: Record<string, unknown> = {};
+			if (flags.tabId) params.tabId = Number.parseInt(flags.tabId, 10);
+			if (action === "metrics") {
+				return {
+					kind: "one-shot",
+					method: "perf_metrics",
+					params,
+					defaultTimeoutMs: BridgeDefaults.REQUEST_TIMEOUT_MS,
+				};
+			}
+			if (action === "trace-start") {
+				if (flags.autoStop) params.autoStopMs = Number.parseInt(flags.autoStop, 10);
+				return {
+					kind: "one-shot",
+					method: "perf_trace_start",
+					params,
+					defaultTimeoutMs: BridgeDefaults.TRACE_TIMEOUT_MS,
+				};
+			}
+			if (action === "trace-stop") {
+				return {
+					kind: "one-shot",
+					method: "perf_trace_stop",
+					params,
+					defaultTimeoutMs: BridgeDefaults.TRACE_TIMEOUT_MS,
+				};
+			}
+			return { kind: "usage-error", message: "Usage: shuvgeist perf <metrics|trace-start|trace-stop>" };
+		}
 		default:
 			return { kind: "usage-error", message: `Unknown command: ${command}` };
 	}

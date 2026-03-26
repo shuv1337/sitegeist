@@ -2,16 +2,28 @@
 
 ## [Unreleased]
 
+### Breaking Changes
+
 ### Added
+
+- Bridge workflow execution and validation commands, including shared workflow schema validation, bounded workflow runs, and structured workflow results.
+- Bridge page snapshot, semantic locator, stable ref, and frame inspection commands for semantic targeting across tabs and frames.
+- Bridge network capture, device emulation, and performance tracing/metrics commands for debugging and observability from the CLI.
 
 - Import/Export for custom providers in Providers & Models settings tab, with conflict resolution UI for overwrites
 - Proxx provider preset in `static/provider-presets/proxx.json` for quick setup after storage resets
 - Model favorites in the selector, with star toggles and pinned ordering so frequently used models stay at the top of the list
 
+### Changed
+
+- Bridge browser tooling now resolves active tabs against the extension window instead of relying on whichever Chrome window currently has OS focus, and debugger-backed bridge features now share a coordinated debugger lifecycle manager.
+
 ### Fixed
 
 - Anthropic Max subscription login now uses a manual code or callback URL paste flow instead of the broken automatic token-exchange redirect flow, restoring Claude Pro/Max sign-in and clarifying the UI prompts.
 - Proxx model catalogs now include the current GPT-5 and Codex families in the shipped preset, imported Proxx providers are backfilled with the built-in OpenAI model metadata so GPT and Codex traffic keeps using the correct upstream API, and the preset now explicitly marks GPT-family entries as `openai-responses`. Proxx credential checks now also honor the custom-provider token instead of opening the providers dialog before send, the selector preserves stored Proxx model metadata instead of replacing it with discovery-only placeholders, the shipped preset points at `http://shuvdev:8789/v1`, and Proxx imports default to discovery disabled so the saved model definitions remain authoritative.
+
+### Removed
 
 ## [1.0.7] - 2026-03-22
 

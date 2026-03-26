@@ -193,6 +193,44 @@ Two actions:
 - **`eval`**: Executes JavaScript in the MAIN world via `chrome.debugger.sendCommand("Runtime.evaluate")`. Required for accessing page-scoped variables, framework state (React, Vue), and `window` properties set by page scripts.
 - **`cookies`**: Gets all cookies for current domain via `chrome.cookies.getAll()`, including HttpOnly cookies when the extension has the `cookies` permission.
 
+### Bridge Execution Helpers
+
+Bridge-mode browser execution now uses shared helper modules under `src/tools/helpers/`:
+
+- `browser-target.ts` resolves explicit `tabId` / `frameId` targets and defaults to the active tab in the registered extension `windowId`. Bridge code never uses `currentWindow: true`.
+- `debugger-manager.ts` centralizes Chrome debugger attach/detach ownership and domain enablement so `eval`, native input, network capture, screenshots, device emulation, and performance tracing can share one debugger lifecycle safely.
+- `frame-resolver.ts` builds stable frame lists and frame trees from `chrome.webNavigation.getAllFrames()`.
+- `ref-map.ts` stores in-memory ref locator bundles keyed by `tabId` + `frameId`, with explicit stale-ref failure reasons.
+- `waits.ts` provides reusable navigation / DOM / network quiet waits for deterministic workflows.
+
+### Bridge Capability Surface
+
+Bridge protocol registration is still flat-string based:
+
+- `BridgeMethods` enumerates every command the server will route.
+- `BridgeCapabilities` enumerates every command the extension advertises.
+- Adding a new bridge command requires adding it to both arrays in `src/bridge/protocol.ts`.
+
+Sensitive commands are filtered by `getBridgeCapabilities()` when bridge settings disable sensitive browser access. The current sensitive set includes:
+
+- `eval`
+- `cookies`
+- `network_get`
+- `network_body`
+- `network_curl`
+
+Session-mutating commands remain the only write-locked bridge methods. Browser-state commands such as workflows, snapshots, network capture, device emulation, and perf tracing are not session write methods.
+
+### Bridge Feature Modules
+
+The bridge now exposes several extension-side execution modules beyond the original navigation / REPL / screenshot surface:
+
+- `workflow-schema.ts` and `workflow-engine.ts` implement shared workflow validation plus extension-side deterministic workflow execution.
+- `page-snapshot.ts` captures compact semantic page snapshots and powers role/text/label lookup plus ref creation.
+- `network-capture.ts` maintains bounded in-memory request capture per tab and exports curl commands with default header redaction.
+- `device-presets.ts` applies named or custom emulation profiles through the debugger-backed `Emulation.*` CDP commands.
+- `performance-tools.ts` exposes one-shot metrics and bounded trace capture.
+
 ### Skill Tool (`src/tools/skill.ts`)
 
 CRUD operations on domain-specific automation libraries stored in IndexedDB:

@@ -14,6 +14,7 @@ import { createRef, ref } from "lit/directives/ref.js";
 import { Loader2, MousePointer2 } from "lucide";
 import { ASK_USER_WHICH_ELEMENT_TOOL_DESCRIPTION } from "../prompts/prompts.js";
 import "../utils/i18n-extension.js";
+import { resolveTabTarget } from "./helpers/browser-target.js";
 
 // ============================================================================
 // TYPES
@@ -526,6 +527,11 @@ export class AskUserWhichElementTool implements AgentTool<typeof selectElementSc
 	name = "ask_user_which_element";
 	description = ASK_USER_WHICH_ELEMENT_TOOL_DESCRIPTION;
 	parameters = selectElementSchema;
+	windowId?: number;
+
+	constructor(options: { windowId?: number } = {}) {
+		this.windowId = options.windowId;
+	}
 
 	async execute(
 		_toolCallId: string,
@@ -539,14 +545,7 @@ export class AskUserWhichElementTool implements AgentTool<typeof selectElementSc
 			}
 
 			// Get the active tab
-			const [tab] = await chrome.tabs.query({
-				active: true,
-				currentWindow: true,
-			});
-
-			if (!tab || !tab.id) {
-				throw new Error("No active tab found");
-			}
+			const { tab, tabId } = await resolveTabTarget({ windowId: this.windowId });
 
 			// Check if we can execute scripts on this tab
 			if (
@@ -568,7 +567,7 @@ export class AskUserWhichElementTool implements AgentTool<typeof selectElementSc
 				if (chrome.userScripts && typeof chrome.userScripts.execute === "function") {
 					// Execute the script and get result
 					const executePromise = chrome.userScripts.execute({
-						target: { tabId: tab.id, allFrames: false },
+						target: { tabId, allFrames: false },
 						world: "USER_SCRIPT",
 						injectImmediately: true,
 						js: [{ code: scriptCode }],
@@ -585,7 +584,7 @@ export class AskUserWhichElementTool implements AgentTool<typeof selectElementSc
 									const cleanupCode = `window.dispatchEvent(new CustomEvent("shuvgeist-element-cancel"));`;
 									chrome.userScripts
 										?.execute({
-											target: { tabId: tab.id!, allFrames: false },
+											target: { tabId, allFrames: false },
 											world: "USER_SCRIPT",
 											injectImmediately: true,
 											js: [{ code: cleanupCode }],

@@ -11,8 +11,18 @@ describe("bridge protocol", () => {
 		expect(getBridgeCapabilities(true)).toEqual(BridgeCapabilities);
 		expect(getBridgeCapabilities(false)).not.toContain("eval");
 		expect(getBridgeCapabilities(false)).not.toContain("cookies");
+		expect(getBridgeCapabilities(false)).not.toContain("network_get");
+		expect(getBridgeCapabilities(false)).not.toContain("network_body");
+		expect(getBridgeCapabilities(false)).not.toContain("network_curl");
 		expect(getBridgeCapabilities(false)).toEqual(
-			BridgeCapabilities.filter((cap) => cap !== "eval" && cap !== "cookies"),
+			BridgeCapabilities.filter(
+				(cap) =>
+					cap !== "eval" &&
+					cap !== "cookies" &&
+					cap !== "network_get" &&
+					cap !== "network_body" &&
+					cap !== "network_curl",
+			),
 		);
 	});
 

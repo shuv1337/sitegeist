@@ -4,6 +4,7 @@ import { registerToolRenderer, renderHeader, type ToolRenderer, type ToolRenderR
 import { type Static, Type } from "@sinclair/typebox";
 import { html } from "lit";
 import { Image as ImageIcon } from "lucide";
+import { resolveTabTarget } from "./helpers/browser-target.js";
 
 const EXTRACT_IMAGE_DESCRIPTION = `Extract images from the current page. Returns image data that you can see and analyze.
 
@@ -184,10 +185,9 @@ export class ExtractImageTool implements AgentTool<typeof extractImageSchema, Ex
 			content.push({ type: "text", text: `Screenshot captured (max ${maxWidth}px width)` });
 		} else if (args.mode === "selector") {
 			if (!args.selector) throw new Error("selector is required for 'selector' mode");
-			const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-			if (!tab?.id) throw new Error("No active tab");
+			const { tabId } = await resolveTabTarget({ windowId: this.windowId });
 
-			const info = await getImageInfoFromPage(tab.id, args.selector);
+			const info = await getImageInfoFromPage(tabId, args.selector);
 			if (typeof info === "string") throw new Error(info);
 
 			const image = await fetchAndResizeImage(info.src, maxWidth);

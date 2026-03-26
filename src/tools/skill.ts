@@ -22,8 +22,14 @@ import { SKILL_TOOL_DESCRIPTION } from "../prompts/prompts.js";
 import { getShuvgeistStorage } from "../storage/app-storage.js";
 import type { Skill } from "../storage/stores/skills-store.js";
 import { defaultSkills } from "./default-skills.js";
+import { resolveTabTarget } from "./helpers/browser-target.js";
 
 const getSkills = () => getShuvgeistStorage().skills;
+let skillToolWindowId: number | undefined;
+
+export function setSkillToolWindowId(windowId?: number): void {
+	skillToolWindowId = windowId;
+}
 
 // Initialize default skills on first run
 export async function initializeDefaultSkills() {
@@ -202,10 +208,7 @@ export const skillTool: AgentTool<typeof skillParamsSchema, any> = {
 	parameters: skillParamsSchema,
 	execute: async (_toolCallId: string, args: SkillParams) => {
 		const skillsRepo = getSkills();
-		const [tab] = await chrome.tabs.query({
-			active: true,
-			currentWindow: true,
-		});
+		const { tab } = await resolveTabTarget({ windowId: skillToolWindowId });
 		const currentUrl = tab?.url || "";
 
 		switch (args.action) {

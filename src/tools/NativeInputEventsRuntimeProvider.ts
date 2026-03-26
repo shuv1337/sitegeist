@@ -1,5 +1,7 @@
 import type { SandboxRuntimeProvider } from "@mariozechner/pi-web-ui";
 import { NATIVE_INPUT_EVENTS_DESCRIPTION } from "../prompts/prompts.js";
+import { resolveTabTarget } from "./helpers/browser-target.js";
+import { type DebuggerManager, getSharedDebuggerManager } from "./helpers/debugger-manager.js";
 
 /**
  * Provides native input event functions to JavaScript REPL using Chrome Debugger API.
@@ -8,11 +10,18 @@ import { NATIVE_INPUT_EVENTS_DESCRIPTION } from "../prompts/prompts.js";
  */
 export class NativeInputEventsRuntimeProvider implements SandboxRuntimeProvider {
 	private modifiers = 0; // Track currently pressed modifiers
+	private readonly windowId?: number;
+	private readonly debuggerManager: DebuggerManager;
 	// Modifier bit flags for CDP
 	private readonly MODIFIER_ALT = 1;
 	private readonly MODIFIER_CTRL = 2;
 	private readonly MODIFIER_META = 4;
 	private readonly MODIFIER_SHIFT = 8;
+
+	constructor(options: { windowId?: number; debuggerManager?: DebuggerManager } = {}) {
+		this.windowId = options.windowId;
+		this.debuggerManager = options.debuggerManager ?? getSharedDebuggerManager();
+	}
 
 	getData(): Record<string, any> {
 		return {};
@@ -22,11 +31,8 @@ export class NativeInputEventsRuntimeProvider implements SandboxRuntimeProvider 
 	 * Get the currently active tab ID
 	 */
 	private async getActiveTabId(): Promise<number> {
-		const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-		if (!tab?.id) {
-			throw new Error("No active tab found");
-		}
-		return tab.id;
+		const { tabId } = await resolveTabTarget({ windowId: this.windowId });
+		return tabId;
 	}
 
 	private getKeyInfo(key: string): { key: string; code: string; keyCode: number } {
@@ -180,25 +186,10 @@ export class NativeInputEventsRuntimeProvider implements SandboxRuntimeProvider 
 		// Get active tab ID once at the start
 		const tabId = await this.getActiveTabId();
 
+		const owner = `native-input:${tabId}`;
 		try {
-			// Attach debugger to tab
-			await new Promise<void>((resolve, reject) => {
-				chrome.debugger.attach({ tabId }, "1.3", () => {
-					if (chrome.runtime.lastError) {
-						// Check if already attached
-						if (chrome.runtime.lastError.message?.includes("already attached")) {
-							console.log("[NativeInput] Debugger already attached (OK)");
-							resolve(); // Already attached is fine
-						} else {
-							console.error("[NativeInput] Debugger attach failed:", chrome.runtime.lastError.message);
-							reject(new Error(chrome.runtime.lastError.message));
-						}
-					} else {
-						console.log("[NativeInput] Debugger attached successfully");
-						resolve();
-					}
-				});
-			});
+			await this.debuggerManager.acquire(tabId, owner);
+			await this.debuggerManager.ensureDomain(tabId, "Runtime");
 
 			if (message.action === "click") {
 				console.log("[NativeInput] Finding element:", message.selector);
@@ -357,19 +348,14 @@ export class NativeInputEventsRuntimeProvider implements SandboxRuntimeProvider 
 				console.error("[NativeInput] Unknown action:", message.action);
 				respond({ success: false, error: `Unknown action: ${message.action}` });
 			}
-		} catch (error: any) {
+		} catch (error) {
 			console.error("[NativeInput] Error during operation:", error);
-			respond({ success: false, error: error.message || String(error) });
+			respond({ success: false, error: error instanceof Error ? error.message : String(error) });
 		} finally {
-			// Detach debugger to remove the banner
 			try {
-				await chrome.debugger.detach({ tabId });
-				console.log("[NativeInput] Debugger detached successfully");
-			} catch (detachError: any) {
-				// Ignore errors if already detached or tab closed
-				if (!detachError.message?.includes("not attached")) {
-					console.warn("[NativeInput] Detach warning:", detachError.message);
-				}
+				await this.debuggerManager.release(tabId, owner);
+			} catch (detachError) {
+				console.warn("[NativeInput] Detach warning:", detachError);
 			}
 		}
 	}

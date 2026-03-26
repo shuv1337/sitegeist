@@ -4,6 +4,7 @@ import {
 	NAVIGATE_RUNTIME_PROVIDER_DESCRIPTION,
 } from "../../prompts/prompts.js";
 import { getShuvgeistStorage } from "../../storage/app-storage.js";
+import { resolveTabTarget } from "../helpers/browser-target.js";
 import type { NavigateParams, NavigateTool } from "../navigate.js";
 import { buildWrapperCode, checkUserScriptsAvailability } from "./userscripts-helpers.js";
 
@@ -29,7 +30,10 @@ export class BrowserJsRuntimeProvider implements SandboxRuntimeProvider {
 	>();
 	private sandboxAbortSignals = new Map<string, AbortSignal>();
 
-	constructor(private sharedProviders: SandboxRuntimeProvider[]) {}
+	constructor(
+		private sharedProviders: SandboxRuntimeProvider[],
+		private readonly windowId?: number,
+	) {}
 
 	getData(): Record<string, any> {
 		return {};
@@ -115,12 +119,9 @@ export class BrowserJsRuntimeProvider implements SandboxRuntimeProvider {
 		}
 
 		// Get current tab
-		const [tab] = await chrome.tabs.query({
-			active: true,
-			currentWindow: true,
-		});
+		const { tab, tabId } = await resolveTabTarget({ windowId: this.windowId });
 
-		if (!tab || !tab.id) {
+		if (!tab?.id) {
 			respond({
 				success: false,
 				error: "No active tab found",
@@ -199,7 +200,7 @@ export class BrowserJsRuntimeProvider implements SandboxRuntimeProvider {
 		// Track this execution for potential cancellation
 		if (executionId) {
 			this.activeExecutions.set(sandboxId, {
-				tabId: tab.id,
+				tabId,
 				executionId: executionId,
 				abortSignal: abortSignal,
 			});
@@ -211,7 +212,7 @@ export class BrowserJsRuntimeProvider implements SandboxRuntimeProvider {
 					console.log(`[BrowserJsRuntimeProvider] Aborting execution ${executionId}`);
 					try {
 						// @ts-expect-error - terminate is not yet in the type definitions
-						await chrome.userScripts.terminate(tab.id!, executionId);
+						await chrome.userScripts.terminate(tabId, executionId);
 						console.log(`[BrowserJsRuntimeProvider] Successfully terminated execution ${executionId}`);
 					} catch (e) {
 						console.error(`[BrowserJsRuntimeProvider] Failed to terminate execution:`, e);
@@ -239,7 +240,7 @@ export class BrowserJsRuntimeProvider implements SandboxRuntimeProvider {
 
 				const injectionConfig: any = {
 					js: [{ code: wrapperCode }],
-					target: { tabId: tab.id, allFrames: false },
+					target: { tabId, allFrames: false },
 					world: "USER_SCRIPT",
 					worldId: FIXED_WORLD_ID,
 					injectImmediately: true,
