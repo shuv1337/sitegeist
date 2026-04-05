@@ -2,6 +2,7 @@ import { getAppStorage, SettingsTab } from "@mariozechner/pi-web-ui";
 import { html, type TemplateResult } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import type { BridgeConnectionState } from "../bridge/extension-client.js";
+import { BRIDGE_STATE_KEY, type BridgeStateData } from "../bridge/internal-messages.js";
 
 /**
  * Callback for the BridgeTab to notify the sidepanel when bridge settings
@@ -14,22 +15,7 @@ export type BridgeSettingsChangeCallback = (settings: {
 	sensitiveAccessEnabled: boolean;
 }) => void;
 
-/** Injected by the sidepanel so the tab can show live connection state. */
-let currentBridgeState: BridgeConnectionState = "disabled";
-let currentBridgeDetail: string | undefined;
 let settingsChangeCallback: BridgeSettingsChangeCallback | undefined;
-
-export function setBridgeStateForTab(state: BridgeConnectionState, detail?: string): void {
-	currentBridgeState = state;
-	currentBridgeDetail = detail;
-}
-
-export function getBridgeStateForTab(): { state: BridgeConnectionState; detail?: string } {
-	return {
-		state: currentBridgeState,
-		detail: currentBridgeDetail,
-	};
-}
 
 export function setBridgeSettingsChangeCallback(cb: BridgeSettingsChangeCallback): void {
 	settingsChangeCallback = cb;
@@ -58,11 +44,19 @@ export class BridgeTab extends SettingsTab {
 		super.connectedCallback();
 		await this.loadSettings();
 
-		// Poll for bridge state changes (the BridgeClient updates the module-level state)
-		this.pollInterval = setInterval(() => {
-			if (this.bridgeState !== currentBridgeState || this.bridgeDetail !== currentBridgeDetail) {
-				this.bridgeState = currentBridgeState;
-				this.bridgeDetail = currentBridgeDetail;
+		// Poll for bridge state changes from background via chrome.storage.session
+		this.pollInterval = setInterval(async () => {
+			try {
+				const result = await chrome.storage.session.get(BRIDGE_STATE_KEY);
+				const stateData = result[BRIDGE_STATE_KEY] as BridgeStateData | undefined;
+				if (stateData) {
+					if (this.bridgeState !== stateData.state || this.bridgeDetail !== stateData.detail) {
+						this.bridgeState = stateData.state;
+						this.bridgeDetail = stateData.detail;
+					}
+				}
+			} catch {
+				// Ignore storage errors
 			}
 		}, 500);
 	}
@@ -81,8 +75,17 @@ export class BridgeTab extends SettingsTab {
 		this.url = (await storage.settings.get<string>("bridge.url")) ?? "ws://127.0.0.1:19285/ws";
 		this.token = (await storage.settings.get<string>("bridge.token")) ?? "";
 		this.sensitiveAccessEnabled = (await storage.settings.get<boolean>("bridge.sensitiveAccessEnabled")) ?? false;
-		this.bridgeState = currentBridgeState;
-		this.bridgeDetail = currentBridgeDetail;
+		// Load initial bridge state from storage
+		try {
+			const result = await chrome.storage.session.get(BRIDGE_STATE_KEY);
+			const stateData = result[BRIDGE_STATE_KEY] as BridgeStateData | undefined;
+			if (stateData) {
+				this.bridgeState = stateData.state;
+				this.bridgeDetail = stateData.detail;
+			}
+		} catch {
+			// Ignore storage errors
+		}
 	}
 
 	private async setEnabled(enabled: boolean) {

@@ -21,7 +21,15 @@ import {
 } from "@mariozechner/pi-web-ui";
 import { html, render } from "lit";
 import { History, Plus, Settings } from "lucide";
-import { BridgeClient } from "./bridge/extension-client.js";
+import {
+	BRIDGE_SETTINGS_KEY,
+	BRIDGE_STATE_KEY,
+	type BridgeReplMessageResponse,
+	type BridgeSessionCommandMessageResponse,
+	type BridgeSettings,
+	type BridgeStateData,
+	type BridgeToSidepanelMessage,
+} from "./bridge/internal-messages.js";
 import { bridgeLog } from "./bridge/logging.js";
 import {
 	ErrorCodes,
@@ -43,7 +51,7 @@ import {
 import { AboutTab } from "./dialogs/AboutTab.js";
 import { ApiKeyOrOAuthDialog } from "./dialogs/ApiKeyOrOAuthDialog.js";
 import { ApiKeysOAuthTab } from "./dialogs/ApiKeysOAuthTab.js";
-import { BridgeTab, setBridgeSettingsChangeCallback, setBridgeStateForTab } from "./dialogs/BridgeTab.js";
+import { BridgeTab, setBridgeSettingsChangeCallback } from "./dialogs/BridgeTab.js";
 import { CostsTab } from "./dialogs/CostsTab.js";
 import { SessionCostDialog } from "./dialogs/SessionCostDialog.js";
 import { ShuvgeistSessionListDialog } from "./dialogs/SessionListDialog.js";
@@ -68,7 +76,7 @@ import { ExtractImageTool, registerExtractImageRenderer } from "./tools/extract-
 import { AskUserWhichElementTool, skillTool } from "./tools/index.js";
 import { NativeInputEventsRuntimeProvider } from "./tools/NativeInputEventsRuntimeProvider.js";
 import { isToolNavigating, NavigateTool } from "./tools/navigate.js";
-import { createReplTool } from "./tools/repl/repl.js";
+import { createReplTool, executeJavaScript } from "./tools/repl/repl.js";
 import { BrowserJsRuntimeProvider, NavigateRuntimeProvider } from "./tools/repl/runtime-providers.js";
 import * as port from "./utils/port.js";
 import "./utils/i18n-extension.js";
@@ -113,35 +121,27 @@ let chatPanel: ChatPanel;
 let agentUnsubscribe: (() => void) | undefined;
 let currentWindowId: number;
 
-const getBridgeSensitiveAccessEnabled = async () => {
-	return (await storage.settings.get<boolean>("bridge.sensitiveAccessEnabled")) ?? false;
-};
-
-const syncBridgeConnection = async () => {
+/**
+ * Mirror bridge settings from app storage to chrome.storage.local so the
+ * background service worker can read them.
+ */
+const mirrorBridgeSettings = async () => {
 	const bridgeEnabled = (await storage.settings.get<boolean>("bridge.enabled")) ?? false;
 	const bridgeUrl = (await storage.settings.get<string>("bridge.url")) ?? "ws://127.0.0.1:19285/ws";
 	const bridgeToken = (await storage.settings.get<string>("bridge.token")) ?? "";
-	const sensitiveAccessEnabled = await getBridgeSensitiveAccessEnabled();
+	const sensitiveAccessEnabled = (await storage.settings.get<boolean>("bridge.sensitiveAccessEnabled")) ?? false;
 
-	if (bridgeEnabled && bridgeUrl && bridgeToken) {
-		bridgeClient.connect({
-			url: bridgeUrl,
-			token: bridgeToken,
-			windowId: currentWindowId,
-			sessionId: currentSessionId,
-			sensitiveAccessEnabled,
-			sessionBridge: sessionBridgeAdapter,
-			onStateChange: (state, detail) => {
-				setBridgeStateForTab(state, detail);
-				renderApp();
-			},
-		});
-	} else {
-		bridgeClient.disconnect();
-		setBridgeStateForTab("disabled");
-		renderApp();
-	}
+	const settings: BridgeSettings = {
+		enabled: bridgeEnabled,
+		url: bridgeUrl,
+		token: bridgeToken,
+		sensitiveAccessEnabled,
+	};
+	await chrome.storage.local.set({ [BRIDGE_SETTINGS_KEY]: settings });
 };
+
+/** Cached bridge connection state read from chrome.storage.session. */
+let cachedBridgeState: BridgeStateData = { state: "disabled" };
 
 // Track which skills we've shown in full (skillName -> lastUpdated timestamp)
 // Reset when a new session/agent is created
@@ -151,8 +151,6 @@ const shownSkills = new Map<string, string>();
 // Use Set with message object identity (not cleared on session switch - persists in memory)
 const recordedCostMessages = new Set<AgentMessage>();
 
-// Bridge client for CLI-to-extension communication
-const bridgeClient = new BridgeClient();
 const sessionBridgeListeners = new Set<(event: SessionBridgeEventEnvelope) => void>();
 
 // Cached auth type label for the current provider
@@ -663,7 +661,7 @@ const bridgeNewSession = async (params: SessionNewParams): Promise<SessionNewRes
 	// Assign a session ID immediately so inject works right away
 	currentSessionId = crypto.randomUUID();
 	updateUrl(currentSessionId);
-	void syncBridgeConnection();
+	void mirrorBridgeSettings();
 	emitSessionChanged();
 	renderApp();
 
@@ -762,6 +760,101 @@ const sessionBridgeAdapter: SessionBridgeAdapter = {
 		return () => sessionBridgeListeners.delete(listener);
 	},
 };
+
+// ============================================================================
+// BRIDGE MESSAGE HANDLERS (background -> sidepanel routing)
+// ============================================================================
+
+chrome.runtime.onMessage.addListener(
+	(
+		message: BridgeToSidepanelMessage | Record<string, unknown>,
+		_sender: chrome.runtime.MessageSender,
+		sendResponse: (response: unknown) => void,
+	) => {
+		if (message.type === "bridge-session-command") {
+			const msg = message as { method: string; params: Record<string, unknown> };
+			handleBridgeSessionCommand(msg.method, msg.params)
+				.then((result) => {
+					sendResponse({ ok: true, result } as BridgeSessionCommandMessageResponse);
+				})
+				.catch((err: Error & { code?: number }) => {
+					sendResponse({ ok: false, error: err.message, code: err.code } as BridgeSessionCommandMessageResponse);
+				});
+			return true; // async response
+		}
+
+		if (message.type === "bridge-repl-execute") {
+			const msg = message as { params: { title: string; code: string } };
+			handleBridgeReplExecute(msg.params)
+				.then((result) => {
+					sendResponse({ ok: true, result } as BridgeReplMessageResponse);
+				})
+				.catch((err: Error) => {
+					sendResponse({ ok: false, error: err.message } as BridgeReplMessageResponse);
+				});
+			return true; // async response
+		}
+
+		return false;
+	},
+);
+
+async function handleBridgeSessionCommand(method: string, params: Record<string, unknown>): Promise<unknown> {
+	switch (method) {
+		case "session_history":
+			return sessionBridgeAdapter.getSnapshot();
+		case "session_inject":
+			return sessionBridgeAdapter.appendInjectedMessage(params as unknown as SessionInjectParams);
+		case "session_new":
+			return sessionBridgeAdapter.newSession(params as unknown as SessionNewParams);
+		case "session_set_model":
+			return sessionBridgeAdapter.setModel(params as unknown as SessionSetModelParams);
+		case "session_artifacts":
+			return sessionBridgeAdapter.getArtifacts();
+		case "waitForIdle":
+			await sessionBridgeAdapter.waitForIdle();
+			return { ok: true };
+		default:
+			throw new Error(`Unknown session command: ${method}`);
+	}
+}
+
+async function handleBridgeReplExecute(params: { title: string; code: string }): Promise<{
+	output: string;
+	files: Array<{ fileName: string; mimeType: string; size: number; contentBase64: string }>;
+}> {
+	const result = await executeJavaScript(
+		params.code,
+		[], // runtime providers for sidepanel context
+		undefined, // signal
+		() => chrome.runtime.getURL("sandbox.html"),
+		params.title,
+		currentWindowId,
+	);
+	return {
+		output: result.output,
+		files: (result.files || []).map((f) => ({
+			fileName: f.fileName || "file",
+			mimeType: f.mimeType || "application/octet-stream",
+			size: typeof f.content === "string" ? f.content.length : (f.content?.byteLength ?? 0),
+			contentBase64: "",
+		})),
+	};
+}
+
+// Poll for bridge state changes from background
+setInterval(async () => {
+	try {
+		const result = await chrome.storage.session.get(BRIDGE_STATE_KEY);
+		const state = result[BRIDGE_STATE_KEY] as BridgeStateData | undefined;
+		if (state && state.state !== cachedBridgeState.state) {
+			cachedBridgeState = state;
+			renderApp();
+		}
+	} catch {
+		// Ignore storage errors
+	}
+}, 2000);
 
 const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true) => {
 	if (agentUnsubscribe) {
@@ -935,7 +1028,7 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 					});
 				updateUrl(currentSessionId);
 				emitSessionChanged();
-				void syncBridgeConnection();
+				void mirrorBridgeSettings();
 			}
 
 			if (currentSessionId) {
@@ -1207,13 +1300,13 @@ const renderApp = () => {
 				<div class="flex items-center gap-1 px-2">
 					${agent ? html`<span class="text-[10px] text-muted-foreground truncate max-w-[120px]" title="${agent.state.model.provider}/${agent.state.model.id}${authLabel ? ` (${authLabel})` : ""}">${agent.state.model.provider}${authLabel ? html` <span class="text-[9px] opacity-70">${authLabel}</span>` : ""}</span>` : ""}
 					${
-						bridgeClient.connectionState === "connected"
+						cachedBridgeState.state === "connected"
 							? html`<span class="w-2 h-2 rounded-full bg-green-500" title="Bridge connected"></span>`
-							: bridgeClient.connectionState === "connecting"
+							: cachedBridgeState.state === "connecting"
 								? html`<span class="w-2 h-2 rounded-full bg-yellow-500 animate-pulse" title="Bridge connecting..."></span>`
-								: bridgeClient.connectionState === "error"
-									? html`<span class="w-2 h-2 rounded-full bg-red-500" title="Bridge error: ${bridgeClient.connectionDetail || "unknown"}"></span>`
-									: bridgeClient.connectionState === "disconnected"
+								: cachedBridgeState.state === "error"
+									? html`<span class="w-2 h-2 rounded-full bg-red-500" title="Bridge error: ${cachedBridgeState.detail || "unknown"}"></span>`
+									: cachedBridgeState.state === "disconnected"
 										? html`<span class="w-2 h-2 rounded-full bg-gray-500" title="Bridge disconnected"></span>`
 										: html``
 					}
@@ -1249,14 +1342,6 @@ const renderApp = () => {
 
 // Listen for tab updates and insert navigation messages only when agent is running
 chrome.tabs.onUpdated.addListener(async (_tabId, changeInfo, tab) => {
-	if (tab.active && tab.windowId === currentWindowId && (changeInfo.url || changeInfo.title) && tab.url) {
-		bridgeClient.sendEvent("active_tab_changed", {
-			url: tab.url,
-			title: tab.title || "",
-			tabId: tab.id,
-		});
-	}
-
 	// Only care about URL changes on the active tab while agent is working
 	// Ignore chrome-extension:// URLs (extension internal pages)
 	// Ignore tool-initiated navigations (handled by the navigate tool itself)
@@ -1283,15 +1368,6 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 	if (activeInfo.windowId !== currentWindowId) return;
 
 	const tab = await chrome.tabs.get(activeInfo.tabId);
-
-	// Notify bridge of tab change
-	if (tab.url) {
-		bridgeClient.sendEvent("active_tab_changed", {
-			url: tab.url,
-			title: tab.title || "",
-			tabId: tab.id,
-		});
-	}
 
 	// Ignore chrome-extension:// URLs (extension internal pages)
 	// Ignore tool-initiated navigations (handled by the navigate tool itself)
@@ -1490,10 +1566,10 @@ async function initApp() {
 	await storage.settings.set("proxy.enabled", false);
 
 	setBridgeSettingsChangeCallback(() => {
-		void syncBridgeConnection();
+		void mirrorBridgeSettings();
 	});
 
-	await syncBridgeConnection();
+	await mirrorBridgeSettings();
 
 	// Create ChatPanel
 	chatPanel = new ChatPanel();
@@ -1550,7 +1626,7 @@ async function initApp() {
 			}
 
 			currentSessionId = sessionIdFromUrl;
-			await syncBridgeConnection();
+			await mirrorBridgeSettings();
 			const metadata = await storage.sessions.getMetadata(sessionIdFromUrl);
 			currentTitle = metadata?.title || "";
 			emitSessionChanged();

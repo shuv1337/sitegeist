@@ -73,11 +73,21 @@ import type {
 import { ErrorCodes, getBridgeCapabilities } from "./protocol.js";
 import { buildSessionHistoryResult, type SessionBridgeAdapter } from "./session-bridge.js";
 
+/**
+ * Router interface for REPL execution.
+ * When provided, the executor delegates REPL calls through this router
+ * instead of executing directly (needed when running in service worker context).
+ */
+export interface ReplRouter {
+	execute(params: ReplParams, signal?: AbortSignal): Promise<BridgeReplResult>;
+}
+
 export interface BrowserCommandExecutorOptions {
 	windowId: number;
 	sessionId?: string;
 	sensitiveAccessEnabled: boolean;
 	sessionBridge?: SessionBridgeAdapter;
+	replRouter?: ReplRouter;
 }
 
 export class BrowserCommandExecutor {
@@ -94,6 +104,7 @@ export class BrowserCommandExecutor {
 	private readonly sessionId?: string;
 	private readonly sensitiveAccessEnabled: boolean;
 	private readonly sessionBridge?: SessionBridgeAdapter;
+	private readonly replRouter?: ReplRouter;
 	private readonly debuggerManager = getSharedDebuggerManager();
 	private readonly refMap = new RefMap();
 
@@ -102,6 +113,7 @@ export class BrowserCommandExecutor {
 		this.sessionId = options.sessionId;
 		this.sensitiveAccessEnabled = options.sensitiveAccessEnabled;
 		this.sessionBridge = options.sessionBridge;
+		this.replRouter = options.replRouter;
 	}
 
 	/** Dispatch a bridge command by method name. */
@@ -213,8 +225,15 @@ export class BrowserCommandExecutor {
 	}
 
 	async repl(params: ReplParams, signal?: AbortSignal): Promise<BridgeReplResult> {
+		// If a REPL router is configured (running in service worker), delegate to it
+		if (this.replRouter) {
+			return this.replRouter.execute(params, signal);
+		}
+
+		// Direct execution (running in sidepanel or extension page with DOM access)
 		const result = await this.getReplTool().execute("bridge", { title: params.title, code: params.code }, signal);
-		const output = result.content.find((item) => item.type === "text")?.text || "";
+		const textItem = result.content.find((item) => item.type === "text");
+		const output = (textItem && "text" in textItem ? textItem.text : "") || "";
 		return {
 			output,
 			files: result.details?.files || [],

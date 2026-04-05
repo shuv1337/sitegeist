@@ -8,7 +8,7 @@
 
 import { BrowserCommandExecutor } from "./browser-command-executor.js";
 import { bridgeLog, type LogFields } from "./logging.js";
-import type { AbortMessage, BridgeRequest, BridgeResponse, RegisterResult } from "./protocol.js";
+import type { AbortMessage, BridgeCapability, BridgeRequest, BridgeResponse, RegisterResult } from "./protocol.js";
 import { ErrorCodes, getBridgeCapabilities } from "./protocol.js";
 import type { SessionBridgeAdapter } from "./session-bridge.js";
 
@@ -22,6 +22,8 @@ export interface BridgeClientOptions {
 	sensitiveAccessEnabled: boolean;
 	sessionBridge?: SessionBridgeAdapter;
 	onStateChange?: (state: BridgeConnectionState, detail?: string) => void;
+	/** Optional callback to compute capabilities dynamically (e.g. based on sidepanel state). */
+	capabilitiesProvider?: () => BridgeCapability[];
 }
 
 export class BridgeClient {
@@ -89,6 +91,15 @@ export class BridgeClient {
 		}
 	}
 
+	/** Re-register with updated capabilities (e.g. when sidepanel opens/closes). */
+	sendCapabilitiesUpdate(): void {
+		if (this.ws?.readyState !== WebSocket.OPEN || !this.options || this.state !== "connected") return;
+		const capabilities = this.options.capabilitiesProvider
+			? this.options.capabilitiesProvider()
+			: getBridgeCapabilities(this.options.sensitiveAccessEnabled);
+		this.sendEvent("capabilities_update", { capabilities });
+	}
+
 	// -----------------------------------------------------------------------
 	// Internal
 	// -----------------------------------------------------------------------
@@ -140,13 +151,16 @@ export class BridgeClient {
 		this.ws = ws;
 
 		ws.onopen = () => {
+			const capabilities = this.options?.capabilitiesProvider
+				? this.options.capabilitiesProvider()
+				: getBridgeCapabilities(sensitiveAccessEnabled);
 			const registration = {
 				type: "register",
 				role: "extension",
 				token,
 				windowId,
 				sessionId,
-				capabilities: getBridgeCapabilities(sensitiveAccessEnabled),
+				capabilities,
 			};
 			ws.send(JSON.stringify(registration));
 		};
