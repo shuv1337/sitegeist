@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-04-06
+
 ### Added
 
 - Always-on bridge: BridgeClient and BrowserCommandExecutor moved from sidepanel to background service worker, keeping the WebSocket connection alive even when the sidepanel is closed
