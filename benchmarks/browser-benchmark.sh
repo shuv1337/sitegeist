@@ -25,12 +25,64 @@ mkdir -p "$RESULTS_DIR"
 GREEN='\033[0;32m'; RED='\033[0;31m'; CYAN='\033[0;36m'
 YELLOW='\033[0;33m'; BOLD='\033[1m'; DIM='\033[2m'; NC='\033[0m'
 
-FORM_URL=$(python3 - <<'PY'
-import urllib.parse
-html='''<!doctype html><html><body><main><h1>Form Benchmark</h1><form><label>Name <input id="name" aria-label="Name"></label><label>Email <input id="email" aria-label="Email"></label><label>City <input id="city" aria-label="City"></label><button type="submit">Submit</button></form></main></body></html>'''
-print('data:text/html;charset=utf-8,' + urllib.parse.quote(html))
-PY
-)
+# Local form-fill fixture.
+#
+# We cannot use a `data:text/html,...` URL here because Chromium silently
+# blocks programmatic top-frame navigation to `data:` URLs (phishing
+# mitigation, Chrome 60+). `chrome.tabs.update(tabId, { url: "data:..." })`
+# fails without error and no webNavigation or tabs.onUpdated `complete` event
+# ever fires, which used to make the form-fill warm-path test hang until the
+# 60s CLI timeout and quietly poison the benchmark.
+#
+# Instead we serve the form from a tiny one-shot python http.server on a
+# dedicated high port for the lifetime of this script.
+FORM_PORT="${FORM_PORT:-19287}"
+FORM_DIR=$(mktemp -d -t shuvgeist-bench-form-XXXXXX)
+cat > "${FORM_DIR}/form.html" <<'HTML'
+<!doctype html>
+<html>
+  <head><meta charset="utf-8"><title>Form Benchmark</title></head>
+  <body>
+    <main>
+      <h1>Form Benchmark</h1>
+      <form>
+        <label>Name <input id="name" aria-label="Name"></label>
+        <label>Email <input id="email" aria-label="Email"></label>
+        <label>City <input id="city" aria-label="City"></label>
+        <button type="submit">Submit</button>
+      </form>
+    </main>
+  </body>
+</html>
+HTML
+
+# Start the static form server. --bind 127.0.0.1 keeps it off the network.
+# Silence its request log so it does not pollute the benchmark output.
+python3 -m http.server "$FORM_PORT" --bind 127.0.0.1 --directory "$FORM_DIR" >/dev/null 2>&1 &
+FORM_SERVER_PID=$!
+
+cleanup_form_server() {
+  if [[ -n "${FORM_SERVER_PID:-}" ]]; then
+    kill "$FORM_SERVER_PID" 2>/dev/null || true
+    wait "$FORM_SERVER_PID" 2>/dev/null || true
+  fi
+  if [[ -n "${FORM_DIR:-}" && -d "$FORM_DIR" ]]; then
+    rm -rf "$FORM_DIR"
+  fi
+}
+trap cleanup_form_server EXIT
+
+# Wait briefly for the server to accept connections.
+for _ in 1 2 3 4 5 6 7 8 9 10; do
+  if curl -sf -o /dev/null "http://127.0.0.1:${FORM_PORT}/form.html"; then break; fi
+  sleep 0.1
+done
+if ! curl -sf -o /dev/null "http://127.0.0.1:${FORM_PORT}/form.html"; then
+  echo -e "${RED}Failed to start form fixture server on port ${FORM_PORT}${NC}" >&2
+  exit 1
+fi
+
+FORM_URL="http://127.0.0.1:${FORM_PORT}/form.html"
 MISSING_SELECTOR="#__definitely_missing_element__"
 
 ########################################################################

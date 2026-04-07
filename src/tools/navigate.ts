@@ -151,36 +151,62 @@ export class NavigateTool implements AgentTool<typeof navigateSchema, NavigateRe
 				return;
 			}
 
-			// Set up DOMContentLoaded listener (fires when DOM is ready, more reliable than onCompleted)
-			const listener = (details: chrome.webNavigation.WebNavigationFramedCallbackDetails) => {
+			let settled = false;
+
+			const cleanup = () => {
+				if (chrome.webNavigation?.onDOMContentLoaded) {
+					chrome.webNavigation.onDOMContentLoaded.removeListener(webNavListener);
+				}
+				if (chrome.tabs?.onUpdated) {
+					chrome.tabs.onUpdated.removeListener(tabUpdatedListener);
+				}
+				signal?.removeEventListener("abort", abortListener);
+			};
+
+			const settle = (action: () => void) => {
+				if (settled) return;
+				settled = true;
+				cleanup();
+				action();
+			};
+
+			// Primary signal: webNavigation.onDOMContentLoaded fires for http(s),
+			// file, ftp, and most real navigations as soon as the DOM is parsed.
+			const webNavListener = (details: chrome.webNavigation.WebNavigationFramedCallbackDetails) => {
 				if (details.tabId === tabId && details.frameId === 0) {
-					chrome.webNavigation.onDOMContentLoaded.removeListener(listener);
-					if (abortListener) signal?.removeEventListener("abort", abortListener);
-					resolve(details.url);
+					settle(() => resolve(details.url));
 				}
 			};
 
-			// Set up abort listener
-			const abortListener = () => {
-				if (chrome.webNavigation?.onDOMContentLoaded) {
-					chrome.webNavigation.onDOMContentLoaded.removeListener(listener);
+			// Fallback signal: chrome.tabs.onUpdated fires for ALL URL schemes
+			// (including data:, blob:, javascript:) which webNavigation skips.
+			// We accept the navigation as complete when the tab transitions to
+			// status === "complete".
+			const tabUpdatedListener = (
+				updatedTabId: number,
+				changeInfo: chrome.tabs.OnUpdatedInfo,
+				tab: chrome.tabs.Tab,
+			) => {
+				if (updatedTabId !== tabId) return;
+				if (changeInfo.status === "complete") {
+					settle(() => resolve(tab.url || url));
 				}
-				reject(new Error("Aborted"));
+			};
+
+			const abortListener = () => {
+				settle(() => reject(new Error("Aborted")));
 			};
 
 			if (signal) {
 				signal.addEventListener("abort", abortListener);
 			}
 
-			chrome.webNavigation.onDOMContentLoaded.addListener(listener);
+			chrome.webNavigation.onDOMContentLoaded.addListener(webNavListener);
+			chrome.tabs.onUpdated.addListener(tabUpdatedListener);
 
 			// Trigger navigation
 			chrome.tabs.update(tabId, { url }).catch((err: Error) => {
-				if (chrome.webNavigation?.onDOMContentLoaded) {
-					chrome.webNavigation.onDOMContentLoaded.removeListener(listener);
-				}
-				if (abortListener) signal?.removeEventListener("abort", abortListener);
-				reject(err);
+				settle(() => reject(err));
 			});
 		});
 	}
@@ -195,34 +221,63 @@ export class NavigateTool implements AgentTool<typeof navigateSchema, NavigateRe
 		if (!newTab.id) {
 			throw new Error("Failed to create new tab");
 		}
+		const newTabId = newTab.id;
 
-		// Wait for the tab to load
+		// Wait for the tab to load. Same dual-listener race as navigateToUrl so
+		// data:/blob:/javascript: URLs do not hang waiting for a webNavigation
+		// event that never fires.
 		return new Promise((resolve, reject) => {
 			if (signal?.aborted) {
 				reject(new Error("Aborted"));
 				return;
 			}
 
-			const listener = (details: chrome.webNavigation.WebNavigationFramedCallbackDetails) => {
-				if (details.tabId === newTab.id && details.frameId === 0) {
-					chrome.webNavigation.onDOMContentLoaded.removeListener(listener);
-					if (abortListener) signal?.removeEventListener("abort", abortListener);
-					resolve({ finalUrl: details.url, tabId: newTab.id! });
+			let settled = false;
+
+			const cleanup = () => {
+				if (chrome.webNavigation?.onDOMContentLoaded) {
+					chrome.webNavigation.onDOMContentLoaded.removeListener(webNavListener);
+				}
+				if (chrome.tabs?.onUpdated) {
+					chrome.tabs.onUpdated.removeListener(tabUpdatedListener);
+				}
+				signal?.removeEventListener("abort", abortListener);
+			};
+
+			const settle = (action: () => void) => {
+				if (settled) return;
+				settled = true;
+				cleanup();
+				action();
+			};
+
+			const webNavListener = (details: chrome.webNavigation.WebNavigationFramedCallbackDetails) => {
+				if (details.tabId === newTabId && details.frameId === 0) {
+					settle(() => resolve({ finalUrl: details.url, tabId: newTabId }));
+				}
+			};
+
+			const tabUpdatedListener = (
+				updatedTabId: number,
+				changeInfo: chrome.tabs.OnUpdatedInfo,
+				tab: chrome.tabs.Tab,
+			) => {
+				if (updatedTabId !== newTabId) return;
+				if (changeInfo.status === "complete") {
+					settle(() => resolve({ finalUrl: tab.url || url, tabId: newTabId }));
 				}
 			};
 
 			const abortListener = () => {
-				if (chrome.webNavigation?.onDOMContentLoaded) {
-					chrome.webNavigation.onDOMContentLoaded.removeListener(listener);
-				}
-				reject(new Error("Aborted"));
+				settle(() => reject(new Error("Aborted")));
 			};
 
 			if (signal) {
 				signal.addEventListener("abort", abortListener);
 			}
 
-			chrome.webNavigation.onDOMContentLoaded.addListener(listener);
+			chrome.webNavigation.onDOMContentLoaded.addListener(webNavListener);
+			chrome.tabs.onUpdated.addListener(tabUpdatedListener);
 		});
 	}
 

@@ -684,10 +684,17 @@ async function cmdLaunch(
 ): Promise<void> {
 	const jsonMode = flags.json || false;
 	try {
-		// Auto-start bridge first
-		await ensureBridgeServer(flags);
+		// For the `launch` command, `flags.url` is the URL to open in the launched
+		// browser, NOT the bridge WebSocket URL. Strip it before passing flags to
+		// ensureBridgeServer / resolveBridgeUrl so we do not accidentally point at
+		// the wrong bridge host (e.g. `shuvgeist launch --url https://example.com`
+		// would otherwise resolve the bridge URL as `http://example.com/status`).
+		const bridgeFlags = { host: flags.host, port: flags.port, token: flags.token };
 
-		const wsUrl = resolveBridgeUrl(flags, process.env, readConfigFile());
+		// Auto-start bridge first
+		await ensureBridgeServer(bridgeFlags);
+
+		const wsUrl = resolveBridgeUrl(bridgeFlags, process.env, readConfigFile());
 		const statusUrl = bridgeStatusUrl(wsUrl);
 		const result = await launchBrowser(options, statusUrl);
 
@@ -757,7 +764,7 @@ function printUsage(): void {
 
 Usage:
   shuvgeist serve [--host HOST] [--port PORT] [--token TOKEN]
-  shuvgeist launch [--browser path] [--extension-path path] [--url url] [--headless] [--foreground] [--profile name]
+  shuvgeist launch [<url>] [--browser path] [--extension-path path] [--url url] [--headless] [--foreground] [--profile name]
   shuvgeist close
   shuvgeist status [--json] [--timeout 10s]
   shuvgeist navigate <url> [--new-tab] [--json] [--timeout 60s]
@@ -825,7 +832,36 @@ Exit codes:
 `);
 }
 
+/**
+ * Force stdout/stderr into blocking mode at startup.
+ *
+ * Node's `process.stdout.write()` is *non-blocking* when the stream is a pipe
+ * (e.g. `shuvgeist snapshot --json | python3 ...`), which means a subsequent
+ * `process.exit()` can terminate the process before the OS pipe buffer has
+ * been fully drained. On Linux the kernel pipe buffer is 64 KiB, so any
+ * output larger than that gets silently truncated at exactly 65536 bytes.
+ *
+ * Putting the underlying libuv handle into blocking mode makes `console.log`
+ * / `write` synchronous again, matching the behavior when stdout is a TTY or
+ * redirected to a file. This is the standard, long-stable workaround for
+ * https://github.com/nodejs/node/issues/6456.
+ */
+function forceBlockingStdio(): void {
+	for (const stream of [process.stdout, process.stderr] as const) {
+		const handle = (stream as unknown as { _handle?: { setBlocking?(blocking: boolean): void } })._handle;
+		if (handle && typeof handle.setBlocking === "function") {
+			try {
+				handle.setBlocking(true);
+			} catch {
+				// Best-effort; if libuv rejects blocking mode (e.g. on an unusual
+				// stream type) we fall back to Node's default behavior.
+			}
+		}
+	}
+}
+
 async function main(): Promise<void> {
+	forceBlockingStdio();
 	const args = process.argv.slice(2);
 	if (args.length === 0 || args[0] === "--help" || args[0] === "-h") {
 		printUsage();
@@ -894,9 +930,12 @@ async function main(): Promise<void> {
 	const flags = globalFlags;
 	const plan = createCommandPlan(command, positionals, flags, (path) => readFileSync(path, "utf-8"));
 
-	// Auto-start bridge for commands that need it
+	// Auto-start bridge for commands that need it. For the `launch` command,
+	// `flags.url` is the URL to open in the launched browser (not the bridge
+	// URL), so strip it before passing to the bridge server helpers.
 	if (plan.kind !== "serve" && plan.kind !== "usage-error") {
-		await ensureBridgeServer(flags);
+		const bridgeFlags = plan.kind === "launch" ? { host: flags.host, port: flags.port, token: flags.token } : flags;
+		await ensureBridgeServer(bridgeFlags);
 	}
 
 	switch (plan.kind) {

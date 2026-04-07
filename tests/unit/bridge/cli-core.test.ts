@@ -107,4 +107,56 @@ describe("cli-core", () => {
 		});
 		expect(readFileText).toHaveBeenCalledWith("script.js");
 	});
+
+	it("reads the launch URL from --url or a positional, never confusing it with the bridge URL", () => {
+		const readFileText = vi.fn();
+
+		// --url form (as documented in the CLI help text)
+		expect(
+			createCommandPlan(
+				"launch",
+				[],
+				{ headless: true, url: "https://example.com" },
+				readFileText,
+			),
+		).toEqual({
+			kind: "launch",
+			options: {
+				browser: undefined,
+				extensionPath: undefined,
+				profile: undefined,
+				url: "https://example.com",
+				headless: true,
+				foreground: undefined,
+			},
+		});
+
+		// Positional form
+		expect(
+			createCommandPlan("launch", ["https://example.com"], { headless: true }, readFileText),
+		).toEqual({
+			kind: "launch",
+			options: {
+				browser: undefined,
+				extensionPath: undefined,
+				profile: undefined,
+				url: "https://example.com",
+				headless: true,
+				foreground: undefined,
+			},
+		});
+
+		// --url wins when both are present (matches the documented flag form).
+		expect(
+			createCommandPlan(
+				"launch",
+				["https://positional.example"],
+				{ url: "https://flag.example" },
+				readFileText,
+			),
+		).toMatchObject({
+			kind: "launch",
+			options: { url: "https://flag.example" },
+		});
+	});
 });

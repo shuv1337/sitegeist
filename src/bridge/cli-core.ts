@@ -623,7 +623,12 @@ export function createCommandPlan(
 					browser: flags.browser,
 					extensionPath: flags.extensionPath,
 					profile: flags.profile,
-					url: positionals[0],
+					// Accept the URL to open either as --url (as documented in the
+					// help text) or as a positional. When --url is used on the launch
+					// command it is the URL to open in the launched browser, NOT the
+					// bridge WebSocket URL — cmdLaunch strips flags.url before
+					// resolving the bridge URL to avoid the collision.
+					url: flags.url || positionals[0],
 					headless: flags.headless,
 					foreground: flags.foreground,
 				},

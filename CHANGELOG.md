@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- CLI stdout pipe truncation: `shuvgeist snapshot --json | ...` and any other command that produced more than ~64 KiB of output was being silently truncated at the Linux pipe buffer size (65536 bytes) because Node writes stdout asynchronously when it is a pipe and `process.exit()` killed the process before the drain completed. The CLI now puts stdout/stderr into libuv blocking mode at `main()` entry (standard workaround for nodejs/node#6456), so piped output matches file-redirected output byte-for-byte.
+- `shuvgeist launch --url <url>` previously treated the URL as the bridge WebSocket URL (because `--url` is the global bridge-URL flag), which silently redirected the "already connected" status check to the wrong host and then spawned a redundant headless browser that timed out waiting for extension registration. The launch command now reads the browser URL from `--url` (as its help text documents) or from a positional argument, and `cmdLaunch` strips `flags.url` before resolving the bridge URL so the two meanings of `--url` never collide. Unit tests lock the contract.
+- `navigate` waits on `chrome.webNavigation.onDOMContentLoaded`, which never fires for URL schemes that webNavigation skips. The tool now races that listener against `chrome.tabs.onUpdated` with `status === "complete"`, which fires for every scheme that Chromium is actually allowed to navigate to. Top-frame `data:` URLs remain blocked by Chromium itself (phishing mitigation, Chrome 60+) — that is a platform limitation no extension can work around.
+
+### Changed
+
+- Browser benchmark harness now serves the form-fill fixture from a one-shot `python3 -m http.server` on `127.0.0.1:19287` (with an `EXIT` trap that kills the server and cleans the tmpdir) instead of a `data:text/html,...` URL. Chromium silently blocks programmatic top-frame navigation to `data:` URLs, which used to make the form-fill warm-path test hang until the 60s CLI timeout and quietly poison benchmark results under the old `time_cmd` harness.
+
 ## [1.1.2] - 2026-04-06
 
 ### Added
