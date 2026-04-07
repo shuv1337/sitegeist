@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [1.1.3] - 2026-04-06
+
 ### Fixed
 
 - CLI stdout pipe truncation: `shuvgeist snapshot --json | ...` and any other command that produced more than ~64 KiB of output was being silently truncated at the Linux pipe buffer size (65536 bytes) because Node writes stdout asynchronously when it is a pipe and `process.exit()` killed the process before the drain completed. The CLI now puts stdout/stderr into libuv blocking mode at `main()` entry (standard workaround for nodejs/node#6456), so piped output matches file-redirected output byte-for-byte.
