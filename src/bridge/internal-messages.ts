@@ -10,14 +10,14 @@ import type { BridgeReplResult, BridgeScreenshotResult, ReplParams, ScreenshotPa
 // Storage keys
 // ---------------------------------------------------------------------------
 
-/** chrome.storage.local key for bridge settings mirrored from app storage. */
+/** chrome.storage.local key for canonical bridge settings owned by the extension runtime. */
 export const BRIDGE_SETTINGS_KEY = "bridge_settings";
 
 /** chrome.storage.session key for bridge connection state (shared with UI). */
 export const BRIDGE_STATE_KEY = "bridge_state";
 
 // ---------------------------------------------------------------------------
-// Bridge settings (mirrored to chrome.storage.local)
+// Bridge settings (canonical chrome.storage.local shape)
 // ---------------------------------------------------------------------------
 
 export interface BridgeSettings {
@@ -45,9 +45,7 @@ export type BridgeToSidepanelMessage =
 	| { type: "bridge-repl-execute"; params: ReplParams }
 	| { type: "bridge-screenshot"; params: ScreenshotParams };
 
-export type SidepanelToBackgroundMessage =
-	| { type: "bridge-get-state" }
-	| { type: "bridge-settings-changed"; settings: BridgeSettings };
+export type SidepanelToBackgroundMessage = { type: "bridge-get-state" };
 
 // ---------------------------------------------------------------------------
 // Background <-> Offscreen messages

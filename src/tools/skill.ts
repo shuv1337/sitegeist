@@ -1,6 +1,5 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { StringEnum } from "@mariozechner/pi-ai";
-import { type Static, Type } from "@sinclair/typebox";
+import { type Static, StringEnum, Type } from "@mariozechner/pi-ai";
 import { SKILL_TOOL_DESCRIPTION } from "../prompts/prompts.js";
 import { getShuvgeistStorage } from "../storage/app-storage.js";
 import type { Skill } from "../storage/stores/skills-store.js";
@@ -187,7 +186,7 @@ const skillParamsSchema = Type.Object({
 
 export type SkillParams = Static<typeof skillParamsSchema>;
 
-export const skillTool: AgentTool<typeof skillParamsSchema, any> = {
+export const skillTool: AgentTool<typeof skillParamsSchema, SkillResultDetails> = {
 	label: "Skill Management",
 	name: "skill",
 	description: SKILL_TOOL_DESCRIPTION,
@@ -441,7 +440,7 @@ export const skillTool: AgentTool<typeof skillParamsSchema, any> = {
 				if (!existing) {
 					return {
 						content: [{ type: "text", text: `Skill '${args.name}' not found.` }],
-						details: {},
+						details: { name: args.name },
 					};
 				}
 

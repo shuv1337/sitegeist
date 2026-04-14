@@ -128,7 +128,7 @@ export const skillRenderer: ToolRenderer<SkillParams, SkillResultDetails> = {
 		// Full params + result
 		if (result && params) {
 			const { action } = params;
-			const skill = result.details;
+			const skill: SkillResultDetails = result.details || {};
 
 			switch (action) {
 				case "get": {
@@ -201,7 +201,7 @@ export const skillRenderer: ToolRenderer<SkillParams, SkillResultDetails> = {
 				case "rewrite": {
 					// Show all skill fields (including library) - COLLAPSED BY DEFAULT
 					// Skill data comes from result.details (full Skill object)
-					const skillData = skill || params.data || {};
+					const skillData: Partial<Skill> = Object.keys(skill).length > 0 ? skill : (params.data ?? {});
 					const skillName = skillData.name;
 					if (!skillName) {
 						return {
@@ -251,7 +251,7 @@ export const skillRenderer: ToolRenderer<SkillParams, SkillResultDetails> = {
 
 					const updates = params.updates || {};
 					// Use the full skill from result.details if available, otherwise just the name
-					const skillData = skill || { name: skillName };
+					const skillData: Partial<Skill> = Object.keys(skill).length > 0 ? skill : { name: skillName };
 
 					return {
 						content: html`

@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolResult } from "@mariozechner/pi-agent-core";
-import type { ImageContent, TextContent } from "@mariozechner/pi-ai";
-import { type Static, Type } from "@sinclair/typebox";
+import type { ImageContent, Static, TextContent } from "@mariozechner/pi-ai";
+import { Type } from "@mariozechner/pi-ai";
 import { resolveTabTarget } from "./helpers/browser-target.js";
 
 const EXTRACT_IMAGE_DESCRIPTION = `Extract images from the current page. Returns image data that you can see and analyze.

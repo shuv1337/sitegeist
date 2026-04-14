@@ -1,7 +1,8 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
+import type { Static } from "@mariozechner/pi-ai";
+import { Type } from "@mariozechner/pi-ai";
 import type { SandboxFile, SandboxResult } from "@mariozechner/pi-web-ui/components/SandboxedIframe.js";
 import type { SandboxRuntimeProvider } from "@mariozechner/pi-web-ui/sandbox/SandboxRuntimeProvider.js";
-import { type Static, Type } from "@sinclair/typebox";
 import { injectOverlayForActiveTab, removeOverlayForActiveTab } from "./overlay-inject.js";
 
 // Execute JavaScript code with attachments using SandboxedIframe

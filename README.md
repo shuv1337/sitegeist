@@ -56,7 +56,7 @@ node dist-cli/shuvgeist.mjs --help
 
 ## CLI Bridge
 
-The bridge lets external tools (Pi, Claude Code, coding agents, scripts) control your browser through the Shuvgeist sidepanel. Architecture: `CLI → Bridge Server (WebSocket relay) → Extension Sidepanel`.
+The bridge lets external tools (Pi, Claude Code, coding agents, scripts) control your browser through the always-on extension runtime. Architecture: `CLI → Bridge Server (WebSocket relay) → Extension Background Worker`.
 
 When sensitive browser data access is enabled in the Bridge settings, the bridge also exposes debugger-backed commands like `shuvgeist eval` and `shuvgeist cookies`.
 
@@ -70,9 +70,17 @@ shuvgeist serve
 
 On first run it generates a token and saves it to `~/.shuvgeist/bridge.json`. The server listens on `0.0.0.0:19285` by default.
 
-**2. Connect the extension:**
+You usually do not need to run `serve` manually: any `shuvgeist` CLI command auto-starts the local bridge when needed.
 
-Open the sidepanel → Settings → Bridge tab. Enable the bridge and paste the token. The URL defaults to `ws://127.0.0.1:19285/ws`. A green dot in the header confirms the connection.
+**2. Let the extension auto-connect:**
+
+For the normal same-host setup, no token paste is required. The background worker uses the default local URL `ws://127.0.0.1:19285/ws`, bootstraps the token from the local bridge, and connects even if you have not opened the sidepanel first.
+
+The Bridge tab is now for:
+- monitoring connection status
+- blocking bridge connections entirely
+- enabling sensitive browser data access
+- advanced remote/LAN URL + token overrides
 
 **3. Run commands:**
 
@@ -108,6 +116,8 @@ shuvgeist select "Click the login button"
 ```
 
 ### Configuration
+
+For the default local setup, the extension uses `chrome.storage.local` bridge settings with auto-connect defaults and loopback token bootstrap. Existing legacy bridge settings are migrated once by the background worker on upgrade.
 
 The CLI reads config from (in priority order):
 
@@ -176,7 +186,7 @@ shuvgeist serve --host 0.0.0.0
 shuvgeist status --host 192.168.1.100 --token <token>
 ```
 
-Set the extension's bridge URL to `ws://<bridge-host-ip>:19285/ws`.
+Set the extension's Bridge tab advanced URL to `ws://<bridge-host-ip>:19285/ws` and enter the remote bridge token manually.
 
 > **V1 bridge traffic is unencrypted. Use only on a trusted local network.**
 

@@ -1,5 +1,5 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { type Static, Type } from "@sinclair/typebox";
+import { type Static, Type } from "@mariozechner/pi-ai";
 import { NAVIGATE_TOOL_DESCRIPTION } from "../prompts/prompts.js";
 import { getShuvgeistStorage } from "../storage/app-storage.js";
 import type { Skill } from "../storage/stores/skills-store.js";

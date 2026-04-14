@@ -2,6 +2,22 @@
 
 ## [Unreleased]
 
+### Added
+
+- Loopback-only bridge `/bootstrap` endpoint with Host/origin/header hardening so the extension background worker can auto-discover the local bridge token without manual copy/paste.
+- Focused bridge settings/bootstrap unit coverage plus expanded bridge server hardening tests.
+
+### Changed
+
+- Bridge settings now use `chrome.storage.local` as the canonical runtime source of truth; the background worker lazily seeds defaults, performs one-time legacy IndexedDB migration, and reconciles live URL/token/sensitive-access changes without sidepanel mirroring.
+- BridgeTab is now a management panel with status, bridge blocking, sensitive-access control, and advanced remote override fields instead of a mandatory local setup form.
+- Same-host bridge onboarding no longer requires opening the sidepanel first or manually pasting the local token.
+
+### Fixed
+
+- Background bridge reconnects now react immediately to URL/token/sensitive-access changes even when already connected.
+- Bridge `disabled` state now means user-blocked only; token bootstrap failures degrade to disconnected/retryable state instead of masquerading as disabled.
+
 ## [1.1.3] - 2026-04-06
 
 ### Fixed

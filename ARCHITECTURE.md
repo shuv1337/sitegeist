@@ -10,7 +10,7 @@ Shuvgeist is a Chrome/Edge browser extension (Manifest v3) that provides an AI-p
 
 ```
 Chrome Extension (Manifest v3, minimum Chrome 141)
-├── background.ts          Service worker (sidebar toggle, session locks, abort relay)
+├── background.ts          Service worker (sidebar toggle, session locks, bridge runtime, abort relay)
 ├── sidepanel.ts           Main UI entry point (agent setup, rendering, event wiring)
 ├── debug.ts               Debug panel for REPL testing
 ├── icons.ts               Icon generation utilities
@@ -202,6 +202,18 @@ Bridge-mode browser execution now uses shared helper modules under `src/tools/he
 - `frame-resolver.ts` builds stable frame lists and frame trees from `chrome.webNavigation.getAllFrames()`.
 - `ref-map.ts` stores in-memory ref locator bundles keyed by `tabId` + `frameId`, with explicit stale-ref failure reasons.
 - `waits.ts` provides reusable navigation / DOM / network quiet waits for deterministic workflows.
+
+### Bridge Runtime Ownership
+
+Bridge connection ownership now lives entirely in `src/background.ts`:
+
+- canonical bridge settings live in `chrome.storage.local[BRIDGE_SETTINGS_KEY]`
+- bridge connection state lives in `chrome.storage.session[BRIDGE_STATE_KEY]`
+- the background worker lazily seeds default local settings and performs a one-time legacy IndexedDB migration when needed
+- loopback bridge URLs bootstrap the local token from `GET /bootstrap` on the bridge server
+- live changes to `enabled`, `url`, `token`, and `sensitiveAccessEnabled` are reconciled in background without sidepanel mirroring
+
+The sidepanel no longer mirrors bridge config. `BridgeTab` reads and writes the canonical local-storage settings directly.
 
 ### Bridge Capability Surface
 

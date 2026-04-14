@@ -69,6 +69,7 @@ export class BridgeServer {
 	private readonly clients = new Map<WebSocket, ClientInfo>();
 	private activeExtension: ClientInfo | null = null;
 	private readonly pendingRequests = new Map<number, PendingRequest>();
+	private readonly rejectedBootstrapCounts = new Map<string, number>();
 	private nextRelayRequestId = 1;
 	private writerCliConnectionId?: string;
 	private writerSessionId?: string;
@@ -84,8 +85,11 @@ export class BridgeServer {
 
 		// -- HTTP server for /status health endpoint --------------------------
 		const httpServer = createServer((req: IncomingMessage, res: ServerResponse) => {
-			if (req.method === "GET" && req.url === "/status") {
+			const pathname = this.getRequestPathname(req);
+			if (req.method === "GET" && pathname === "/status") {
 				this.handleStatusRequest(res);
+			} else if (req.method === "GET" && pathname === "/bootstrap") {
+				this.handleBootstrapRequest(req, res);
 			} else {
 				res.writeHead(404, { "Content-Type": "application/json" });
 				res.end(JSON.stringify({ error: "Not found" }));
@@ -592,8 +596,27 @@ export class BridgeServer {
 	}
 
 	// -----------------------------------------------------------------------
-	// /status endpoint
+	// /status and /bootstrap endpoints
 	// -----------------------------------------------------------------------
+
+	private handleBootstrapRequest(req: IncomingMessage, res: ServerResponse): void {
+		const rejectionReason = this.getBootstrapRejectionReason(req);
+		if (rejectionReason) {
+			this.logBootstrapRejection(req, rejectionReason);
+			this.writeJson(res, 403, { error: rejectionReason });
+			return;
+		}
+
+		// Trust model: a same-user local process can already read
+		// ~/.shuvgeist/bridge.json, so /bootstrap does not add a meaningful new
+		// attack surface as long as loopback-only transport, Host/Origin checks,
+		// the custom bootstrap header requirement, and closed-by-default CORS
+		// behavior are all enforced here.
+		this.writeJson(res, 200, {
+			version: 1,
+			token: this.config.token,
+		});
+	}
 
 	private handleStatusRequest(res: ServerResponse): void {
 		const ext = this.activeExtension;
@@ -616,13 +639,76 @@ export class BridgeServer {
 			pendingRequests: this.pendingRequests.size,
 		};
 
-		res.writeHead(200, { "Content-Type": "application/json" });
-		res.end(JSON.stringify(status, null, 2));
+		this.writeJson(res, 200, status);
 	}
 
 	// -----------------------------------------------------------------------
 	// Helpers
 	// -----------------------------------------------------------------------
+
+	private getRequestPathname(req: IncomingMessage): string {
+		return new URL(req.url || "/", "http://127.0.0.1").pathname;
+	}
+
+	private getBootstrapRejectionReason(req: IncomingMessage): string | null {
+		const remoteAddress = req.socket.remoteAddress;
+		if (!this.isLoopbackRemoteAddress(remoteAddress)) {
+			return "Bootstrap is only available from loopback callers";
+		}
+
+		if (!this.isAllowedBootstrapHost(req.headers.host)) {
+			return "Bootstrap rejected due to invalid Host header";
+		}
+
+		if (!this.isAllowedBootstrapOrigin(req.headers.origin)) {
+			return "Bootstrap rejected due to invalid Origin header";
+		}
+
+		if (req.headers["x-shuvgeist-bootstrap"] !== "1") {
+			return "Bootstrap requires X-Shuvgeist-Bootstrap: 1";
+		}
+
+		return null;
+	}
+
+	private isLoopbackRemoteAddress(remoteAddress?: string): boolean {
+		return remoteAddress === "127.0.0.1" || remoteAddress === "::1" || remoteAddress === "::ffff:127.0.0.1";
+	}
+
+	private isAllowedBootstrapHost(hostHeader?: string): boolean {
+		return (
+			hostHeader === `127.0.0.1:${this.config.port}` ||
+			hostHeader === `localhost:${this.config.port}` ||
+			hostHeader === `[::1]:${this.config.port}`
+		);
+	}
+
+	private isAllowedBootstrapOrigin(originHeader?: string): boolean {
+		if (!originHeader) return true;
+		if (/^chrome-extension:\/\/[a-p]{32}$/u.test(originHeader)) return true;
+		return false;
+	}
+
+	private logBootstrapRejection(req: IncomingMessage, reason: string): void {
+		const remoteAddress = req.socket.remoteAddress || "unknown";
+		const key = `${remoteAddress}:${reason}`;
+		const count = (this.rejectedBootstrapCounts.get(key) || 0) + 1;
+		this.rejectedBootstrapCounts.set(key, count);
+		if (count <= 3 || count % 10 === 0) {
+			bridgeLog("warn", "bootstrap request rejected", {
+				role: "server",
+				remoteAddress,
+				outcome: "rejected",
+				reason,
+				count,
+			});
+		}
+	}
+
+	private writeJson(res: ServerResponse, statusCode: number, body: unknown): void {
+		res.writeHead(statusCode, { "Content-Type": "application/json" });
+		res.end(JSON.stringify(body, null, statusCode === 200 ? 2 : undefined));
+	}
 
 	private sendJson(ws: WebSocket, data: unknown): void {
 		if (ws.readyState === WebSocket.OPEN) {

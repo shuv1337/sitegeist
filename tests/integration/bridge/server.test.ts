@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WebSocket } from "ws";
 import { BridgeServer } from "../../../src/bridge/server.js";
 import { BridgeDefaults, ErrorCodes } from "../../../src/bridge/protocol.js";
@@ -37,6 +37,82 @@ describe("BridgeServer", () => {
 
 	afterEach(async () => {
 		await server.stop();
+	});
+
+	it("returns a bootstrap token only for hardened loopback requests", async () => {
+		const success = await fetch(`http://127.0.0.1:${port}/bootstrap`, {
+			headers: {
+				Host: `127.0.0.1:${port}`,
+				"X-Shuvgeist-Bootstrap": "1",
+			},
+		});
+		expect(success.status).toBe(200);
+		await expect(success.json()).resolves.toEqual({ version: 1, token: "secret-token" });
+
+		const missingHeader = await fetch(`http://127.0.0.1:${port}/bootstrap`, {
+			headers: { Host: `127.0.0.1:${port}` },
+		});
+		expect(missingHeader.status).toBe(403);
+
+		const fakeReq = {
+			socket: { remoteAddress: "127.0.0.1" },
+			headers: {
+				host: `evil.example:${port}`,
+				"x-shuvgeist-bootstrap": "1",
+			},
+		} as unknown as Parameters<BridgeServer["handleBootstrapRequest"]>[0];
+		const writeHead = vi.fn();
+		const end = vi.fn();
+		const fakeRes = { writeHead, end } as unknown as Parameters<BridgeServer["handleBootstrapRequest"]>[1];
+		(server as unknown as { handleBootstrapRequest: (req: unknown, res: unknown) => void }).handleBootstrapRequest(
+			fakeReq,
+			fakeRes,
+		);
+		expect(writeHead).toHaveBeenCalledWith(403, { "Content-Type": "application/json" });
+		expect(end).toHaveBeenCalledWith(JSON.stringify({ error: "Bootstrap rejected due to invalid Host header" }));
+
+		const badOrigin = await fetch(`http://127.0.0.1:${port}/bootstrap`, {
+			headers: {
+				Host: `127.0.0.1:${port}`,
+				Origin: "https://evil.example",
+				"X-Shuvgeist-Bootstrap": "1",
+			},
+		});
+		expect(badOrigin.status).toBe(403);
+		expect(badOrigin.headers.get("access-control-allow-origin")).toBeNull();
+
+		const options = await fetch(`http://127.0.0.1:${port}/bootstrap`, {
+			method: "OPTIONS",
+			headers: {
+				Host: `127.0.0.1:${port}`,
+				Origin: "https://evil.example",
+				"Access-Control-Request-Method": "GET",
+				"Access-Control-Request-Headers": "x-shuvgeist-bootstrap",
+			},
+		});
+		expect(options.status).toBe(404);
+		expect(options.headers.get("access-control-allow-origin")).toBeNull();
+	});
+
+	it("rejects bootstrap for non-loopback callers", async () => {
+		const fakeReq = {
+			socket: { remoteAddress: "10.0.0.8" },
+			headers: {
+				host: `127.0.0.1:${port}`,
+				"x-shuvgeist-bootstrap": "1",
+			},
+		} as unknown as Parameters<BridgeServer["handleBootstrapRequest"]>[0];
+		const writeHead = vi.fn();
+		const end = vi.fn();
+		const fakeRes = { writeHead, end } as unknown as Parameters<BridgeServer["handleBootstrapRequest"]>[1];
+
+		(server as unknown as { handleBootstrapRequest: (req: unknown, res: unknown) => void }).handleBootstrapRequest(
+			fakeReq,
+			fakeRes,
+		);
+
+		expect(writeHead).toHaveBeenCalledWith(403, { "Content-Type": "application/json" });
+		expect(end).toHaveBeenCalledWith(JSON.stringify({ error: "Bootstrap is only available from loopback callers" }));
 	});
 
 	it("registers CLI and extension clients and exposes status", async () => {

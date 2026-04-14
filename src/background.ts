@@ -18,6 +18,7 @@ import {
 	SIDEPANEL_OPEN_KEY,
 	shouldCloseSidepanel,
 } from "./background-state.js";
+import { bootstrapTokenIfNeeded } from "./bridge/bootstrap.js";
 import { BrowserCommandExecutor, type ReplRouter, type ScreenshotRouter } from "./bridge/browser-command-executor.js";
 import { BridgeClient } from "./bridge/extension-client.js";
 import {
@@ -32,6 +33,11 @@ import {
 } from "./bridge/internal-messages.js";
 import { type BridgeCapability, ErrorCodes, getBridgeCapabilities } from "./bridge/protocol.js";
 import type { SessionBridgeAdapter } from "./bridge/session-bridge.js";
+import {
+	createChromeStorageBridgeSettingsAdapter,
+	loadBridgeSettings,
+	settingsRequireReconnect,
+} from "./bridge/settings.js";
 import { isUsableWindowId, resolveTabTarget } from "./tools/helpers/browser-target.js";
 import { getSharedDebuggerManager } from "./tools/helpers/debugger-manager.js";
 import type { SidepanelToBackgroundMessage } from "./utils/port.js";
@@ -269,7 +275,10 @@ function getCurrentCapabilities(): BridgeCapability[] {
 // ============================================================================
 
 const bridgeClient = new BridgeClient();
+const bridgeSettingsStorage = createChromeStorageBridgeSettingsAdapter();
 let currentSettings: BridgeSettings | null = null;
+let bootstrapSettingsPromise: Promise<BridgeSettings> | null = null;
+let bootstrapSettingsUrl: string | null = null;
 /**
  * Last cached usable window id (positive integer). `undefined` means we have
  * never observed a usable focused window. Treated as "no target" everywhere.
@@ -294,18 +303,66 @@ async function resolveWindowId(): Promise<number | undefined> {
 	return currentWindowId;
 }
 
-async function ensureBridgeConnection(): Promise<void> {
-	const data = await chrome.storage.local.get(BRIDGE_SETTINGS_KEY);
-	const settings = data[BRIDGE_SETTINGS_KEY] as BridgeSettings | undefined;
+async function setBridgeState(state: BridgeStateData["state"], detail?: string): Promise<void> {
+	const stateData: BridgeStateData = { state, detail };
+	await chrome.storage.session.set({ [BRIDGE_STATE_KEY]: stateData });
+}
 
-	if (!settings?.enabled || !settings.url || !settings.token) {
+async function bootstrapSettingsForLoopback(settings: BridgeSettings): Promise<BridgeSettings> {
+	if (!bootstrapSettingsPromise || bootstrapSettingsUrl !== settings.url) {
+		bootstrapSettingsUrl = settings.url;
+		bootstrapSettingsPromise = bootstrapTokenIfNeeded(settings).then((result) => result.settings);
+	}
+
+	try {
+		return await bootstrapSettingsPromise;
+	} finally {
+		bootstrapSettingsPromise = null;
+		bootstrapSettingsUrl = null;
+	}
+}
+
+async function ensureBridgeConnection(): Promise<void> {
+	const previousSettings = currentSettings;
+	const { settings } = await loadBridgeSettings(bridgeSettingsStorage);
+
+	if (!settings.enabled) {
 		bridgeClient.disconnect();
-		currentSettings = null;
+		currentSettings = settings;
 		lastConnectedWindowId = undefined;
+		await setBridgeState("disabled");
 		return;
 	}
 
-	currentSettings = settings;
+	let resolvedSettings = settings;
+
+	if (!resolvedSettings.token) {
+		try {
+			const bootstrappedSettings = await bootstrapSettingsForLoopback(resolvedSettings);
+			if (bootstrappedSettings.token && bootstrappedSettings.token !== resolvedSettings.token) {
+				currentSettings = resolvedSettings;
+				await bridgeSettingsStorage.setLocalSettings(bootstrappedSettings);
+				return;
+			}
+			resolvedSettings = bootstrappedSettings;
+		} catch (error) {
+			bridgeClient.disconnect();
+			currentSettings = resolvedSettings;
+			lastConnectedWindowId = undefined;
+			await setBridgeState("disconnected", error instanceof Error ? error.message : "Local bridge bootstrap failed");
+			return;
+		}
+	}
+
+	if (!resolvedSettings.token) {
+		bridgeClient.disconnect();
+		currentSettings = resolvedSettings;
+		lastConnectedWindowId = undefined;
+		await setBridgeState("disconnected", "Enter the remote bridge token to connect.");
+		return;
+	}
+
+	currentSettings = resolvedSettings;
 
 	const windowId = await resolveWindowId();
 
@@ -314,6 +371,8 @@ async function ensureBridgeConnection(): Promise<void> {
 	// the next keepalive alarm will retry).
 	if (!isUsableWindowId(windowId)) {
 		console.log("[Background] Deferring bridge connection until a usable window id is available");
+		lastConnectedWindowId = undefined;
+		await setBridgeState("disconnected", "Waiting for a usable browser window");
 		return;
 	}
 
@@ -322,31 +381,31 @@ async function ensureBridgeConnection(): Promise<void> {
 		bridgeClient.connectionState === "disconnected" ||
 		bridgeClient.connectionState === "error";
 	const windowIdChanged = lastConnectedWindowId !== windowId;
-	const needsReconnect = stateRequiresReconnect || windowIdChanged;
+	const settingsChanged = settingsRequireReconnect(previousSettings, resolvedSettings);
+	const needsReconnect = stateRequiresReconnect || windowIdChanged || settingsChanged;
 
-	if (needsReconnect) {
-		const executor = new BrowserCommandExecutor({
-			windowId,
-			sensitiveAccessEnabled: settings.sensitiveAccessEnabled,
-			sessionBridge: backgroundSessionBridge,
-			replRouter,
-			screenshotRouter,
-		});
+	if (!needsReconnect) return;
 
-		bridgeClient.connect({
-			url: settings.url,
-			token: settings.token,
-			windowId,
-			sensitiveAccessEnabled: settings.sensitiveAccessEnabled,
-			executor,
-			capabilitiesProvider: getCurrentCapabilities,
-			onStateChange: (state, detail) => {
-				const stateData: BridgeStateData = { state, detail };
-				chrome.storage.session.set({ [BRIDGE_STATE_KEY]: stateData });
-			},
-		});
-		lastConnectedWindowId = windowId;
-	}
+	const executor = new BrowserCommandExecutor({
+		windowId,
+		sensitiveAccessEnabled: resolvedSettings.sensitiveAccessEnabled,
+		sessionBridge: backgroundSessionBridge,
+		replRouter,
+		screenshotRouter,
+	});
+
+	bridgeClient.connect({
+		url: resolvedSettings.url,
+		token: resolvedSettings.token,
+		windowId,
+		sensitiveAccessEnabled: resolvedSettings.sensitiveAccessEnabled,
+		executor,
+		capabilitiesProvider: getCurrentCapabilities,
+		onStateChange: (state, detail) => {
+			void setBridgeState(state, detail);
+		},
+	});
+	lastConnectedWindowId = windowId;
 }
 
 // ============================================================================
@@ -481,14 +540,6 @@ chrome.runtime.onMessage.addListener(
 				detail: bridgeClient.connectionDetail,
 			};
 			sendResponse(stateData);
-			return false;
-		}
-
-		if (message.type === "bridge-settings-changed") {
-			const settings = message.settings as BridgeSettings;
-			chrome.storage.local.set({ [BRIDGE_SETTINGS_KEY]: settings });
-			void ensureBridgeConnection();
-			sendResponse({ ok: true });
 			return false;
 		}
 

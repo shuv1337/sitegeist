@@ -23,12 +23,10 @@ import { html, render } from "lit";
 import { History, Plus, Settings } from "lucide";
 import { BrowserCommandExecutor } from "./bridge/browser-command-executor.js";
 import {
-	BRIDGE_SETTINGS_KEY,
 	BRIDGE_STATE_KEY,
 	type BridgeReplMessageResponse,
 	type BridgeScreenshotMessageResponse,
 	type BridgeSessionCommandMessageResponse,
-	type BridgeSettings,
 	type BridgeStateData,
 	type BridgeToSidepanelMessage,
 } from "./bridge/internal-messages.js";
@@ -55,7 +53,7 @@ import {
 import { AboutTab } from "./dialogs/AboutTab.js";
 import { ApiKeyOrOAuthDialog } from "./dialogs/ApiKeyOrOAuthDialog.js";
 import { ApiKeysOAuthTab } from "./dialogs/ApiKeysOAuthTab.js";
-import { BridgeTab, setBridgeSettingsChangeCallback } from "./dialogs/BridgeTab.js";
+import { BridgeTab } from "./dialogs/BridgeTab.js";
 import { CostsTab } from "./dialogs/CostsTab.js";
 import { SessionCostDialog } from "./dialogs/SessionCostDialog.js";
 import { ShuvgeistSessionListDialog } from "./dialogs/SessionListDialog.js";
@@ -132,25 +130,6 @@ let agent: Agent;
 let chatPanel: ChatPanel;
 let agentUnsubscribe: (() => void) | undefined;
 let currentWindowId: number;
-
-/**
- * Mirror bridge settings from app storage to chrome.storage.local so the
- * background service worker can read them.
- */
-const mirrorBridgeSettings = async () => {
-	const bridgeEnabled = (await storage.settings.get<boolean>("bridge.enabled")) ?? false;
-	const bridgeUrl = (await storage.settings.get<string>("bridge.url")) ?? "ws://127.0.0.1:19285/ws";
-	const bridgeToken = (await storage.settings.get<string>("bridge.token")) ?? "";
-	const sensitiveAccessEnabled = (await storage.settings.get<boolean>("bridge.sensitiveAccessEnabled")) ?? false;
-
-	const settings: BridgeSettings = {
-		enabled: bridgeEnabled,
-		url: bridgeUrl,
-		token: bridgeToken,
-		sensitiveAccessEnabled,
-	};
-	await chrome.storage.local.set({ [BRIDGE_SETTINGS_KEY]: settings });
-};
 
 /** Cached bridge connection state read from chrome.storage.session. */
 let cachedBridgeState: BridgeStateData = { state: "disabled" };
@@ -305,7 +284,7 @@ async function selectDefaultModelForAvailableProvider() {
 		if (modelId) {
 			const model = getModel(provider as any, modelId);
 			if (model) {
-				agent.setModel(model);
+				agent.state.model = model;
 				await storage.settings.set("lastUsedModel", model);
 				await updateAuthLabel();
 				renderApp();
@@ -318,7 +297,7 @@ async function selectDefaultModelForAvailableProvider() {
 	for (const provider of providers) {
 		const models = getModels(provider as any);
 		if (models.length > 0) {
-			agent.setModel(models[0]);
+			agent.state.model = models[0];
 			await storage.settings.set("lastUsedModel", models[0]);
 			await updateAuthLabel();
 			renderApp();
@@ -328,7 +307,7 @@ async function selectDefaultModelForAvailableProvider() {
 		const customProvider = await getCustomProviderByName(provider);
 		const customModel = customProvider?.models?.[0];
 		if (customModel) {
-			agent.setModel(customModel);
+			agent.state.model = customModel;
 			await storage.settings.set("lastUsedModel", customModel);
 			await updateAuthLabel();
 			renderApp();
@@ -606,7 +585,7 @@ const appendInjectedMessage = async (params: SessionInjectParams) => {
 
 	if (params.role === "assistant") {
 		// Assistant messages are just appended — no agent turn needed.
-		agent.appendMessage(message);
+		agent.state.messages = [...agent.state.messages, message];
 	} else {
 		// User messages trigger a full agent turn (prompt + model response),
 		// matching the behavior of typing in the sidebar input.
@@ -664,7 +643,6 @@ const bridgeNewSession = async (params: SessionNewParams): Promise<SessionNewRes
 	// Assign a session ID immediately so inject works right away
 	currentSessionId = crypto.randomUUID();
 	updateUrl(currentSessionId);
-	void mirrorBridgeSettings();
 	emitSessionChanged();
 	renderApp();
 
@@ -721,7 +699,7 @@ const bridgeSetModel = async (params: SessionSetModelParams): Promise<SessionSet
 	const model = await resolveModelSpec(params.model, params.provider);
 
 	const normalizedModel = normalizeModelForRuntime(model);
-	agent.setModel(normalizedModel);
+	agent.state.model = normalizedModel;
 	chatPanel.agentInterface?.requestUpdate();
 	await storage.settings.set("lastUsedModel", normalizedModel);
 	updateAuthLabel().catch(() => {});
@@ -1109,7 +1087,6 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 					});
 				updateUrl(currentSessionId);
 				emitSessionChanged();
-				void mirrorBridgeSettings();
 			}
 
 			if (currentSessionId) {
@@ -1151,7 +1128,7 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 				agent.state.model,
 				(model) => {
 					const normalizedModel = normalizeModelForRuntime(model);
-					agent.setModel(normalizedModel);
+					agent.state.model = normalizedModel;
 					storage.settings
 						.set("lastUsedModel", normalizedModel)
 						.catch((err) => console.error("Failed to save lastUsedModel:", err));
@@ -1190,7 +1167,7 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 			// Only add if URL changed
 			if (!lastUrl || lastUrl !== tab.url) {
 				const navMessage = await createNavigationMessage(tab.url, tab.title || "Untitled", tab.favIconUrl, tab.id);
-				agent.appendMessage(navMessage);
+				agent.state.messages = [...agent.state.messages, navMessage];
 				emitSessionMessage(navMessage, agent.state.messages.length - 1);
 				emitSessionChanged();
 			}
@@ -1646,12 +1623,6 @@ async function initApp() {
 	// Proxy disabled — CORS is handled locally via declarativeNetRequest rules
 	await storage.settings.set("proxy.enabled", false);
 
-	setBridgeSettingsChangeCallback(() => {
-		void mirrorBridgeSettings();
-	});
-
-	await mirrorBridgeSettings();
-
 	// Create ChatPanel
 	chatPanel = new ChatPanel();
 
@@ -1700,14 +1671,13 @@ async function initApp() {
 				await createAgent();
 				if (agent) {
 					const welcomeMessage = createWelcomeMessage(tutorials);
-					agent.appendMessage(welcomeMessage);
+					agent.state.messages = [...agent.state.messages, welcomeMessage];
 				}
 				renderApp();
 				return;
 			}
 
 			currentSessionId = sessionIdFromUrl;
-			await mirrorBridgeSettings();
 			const metadata = await storage.sessions.getMetadata(sessionIdFromUrl);
 			currentTitle = metadata?.title || "";
 			emitSessionChanged();
@@ -1735,7 +1705,7 @@ async function initApp() {
 	// Add welcome message for new sessions
 	if (agent) {
 		const welcomeMessage = createWelcomeMessage(tutorials);
-		agent.appendMessage(welcomeMessage);
+		agent.state.messages = [...agent.state.messages, welcomeMessage];
 	}
 
 	emitSessionChanged();

@@ -1,6 +1,5 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { StringEnum } from "@mariozechner/pi-ai";
-import { type Static, Type } from "@sinclair/typebox";
+import { type Static, StringEnum, Type } from "@mariozechner/pi-ai";
 import { resolveBrowserTarget } from "./helpers/browser-target.js";
 import { type DebuggerManager, getSharedDebuggerManager } from "./helpers/debugger-manager.js";
 

@@ -1,5 +1,5 @@
 import type { AgentTool } from "@mariozechner/pi-agent-core";
-import { type Static, Type } from "@sinclair/typebox";
+import { type Static, Type } from "@mariozechner/pi-ai";
 import { isUsableWindowId } from "./helpers/browser-target.js";
 import type { RefLocatorBundle, SemanticLocatorCandidate } from "./helpers/ref-map.js";
 import { rankLocatorCandidates } from "./helpers/ref-map.js";

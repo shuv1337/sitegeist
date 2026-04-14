@@ -47,13 +47,17 @@ test("bridge happy path responds to CLI status", async () => {
 	const page = await openExtensionPage(context, extensionId, "sidepanel.html?new=true");
 	await openBridgeSettings(page);
 
-	await page.getByRole("checkbox", { name: "Enable bridge" }).check();
-	const urlInput = page.locator('input[type="text"]').last();
-	await urlInput.fill(`ws://127.0.0.1:${port}/ws`);
-	await urlInput.blur();
-	const tokenInput = page.locator('bridge-tab input[type="password"]');
-	await tokenInput.fill("playwright-token");
-	await tokenInput.blur();
+	const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
+	await worker.evaluate(async ({ bridgePort }) => {
+		await chrome.storage.local.set({
+			bridge_settings: {
+				enabled: true,
+				url: `ws://127.0.0.1:${bridgePort}/ws`,
+				token: "",
+				sensitiveAccessEnabled: false,
+			},
+		});
+	}, { bridgePort: port });
 
 	await expect(page.locator("bridge-tab").getByText("Connected")).toBeVisible({ timeout: 15_000 });
 
