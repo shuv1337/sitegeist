@@ -8,6 +8,7 @@
  * or offscreen document (for REPL when sidepanel is closed).
  */
 
+import { setAppStorage } from "@mariozechner/pi-web-ui";
 import {
 	buildLockedSessionsMessage,
 	buildLockResult,
@@ -18,6 +19,7 @@ import {
 	SIDEPANEL_OPEN_KEY,
 	shouldCloseSidepanel,
 } from "./background-state.js";
+import { handleBgRuntimeExec, resolveBackgroundUserScriptMessage } from "./bridge/background-runtime-handler.js";
 import { bootstrapTokenIfNeeded } from "./bridge/bootstrap.js";
 import { BrowserCommandExecutor, type ReplRouter, type ScreenshotRouter } from "./bridge/browser-command-executor.js";
 import { BridgeClient } from "./bridge/extension-client.js";
@@ -38,6 +40,7 @@ import {
 	loadBridgeSettings,
 	settingsRequireReconnect,
 } from "./bridge/settings.js";
+import { ShuvgeistAppStorage } from "./storage/app-storage.js";
 import { isUsableWindowId, resolveTabTarget } from "./tools/helpers/browser-target.js";
 import { getSharedDebuggerManager } from "./tools/helpers/debugger-manager.js";
 import type { SidepanelToBackgroundMessage } from "./utils/port.js";
@@ -45,6 +48,26 @@ import type { SidepanelToBackgroundMessage } from "./utils/port.js";
 // ============================================================================
 // SIDEPANEL STATE TRACKING
 // ============================================================================
+
+// ============================================================================
+// BACKGROUND APP STORAGE (for skill lookup during bridge-initiated REPL)
+// ============================================================================
+
+let backgroundStorage: ShuvgeistAppStorage | null = null;
+
+/**
+ * Lazily initialize the ShuvgeistAppStorage singleton for the background service worker.
+ * IndexedDB is available in service workers, so skill lookup / settings reads work here too.
+ * This is required so the bridge-initiated REPL path (offscreen -> background -> userScripts)
+ * can load domain-scoped skill libraries before injecting browserjs() code.
+ */
+function ensureBackgroundStorage(): ShuvgeistAppStorage {
+	if (!backgroundStorage) {
+		backgroundStorage = new ShuvgeistAppStorage();
+		setAppStorage(backgroundStorage);
+	}
+	return backgroundStorage;
+}
 
 let openSidepanels = new Set<number>();
 
@@ -154,9 +177,15 @@ const replRouter: ReplRouter = {
 		// Strategy 2: Route to offscreen document
 		try {
 			await ensureOffscreenDocument();
+			// Ensure background-side app storage is available so offscreen's
+			// proxy providers can rely on the background-owned browserjs handler
+			// reading the IndexedDB-backed skills store.
+			ensureBackgroundStorage();
+			const windowId = await resolveWindowId();
 			const response = await sendMessageSafe<BridgeReplMessageResponse>({
 				type: "bridge-repl-execute",
 				params,
+				windowId,
 			} as BridgeToOffscreenMessage);
 			if (response?.ok) return response.result;
 			if (response && !response.ok) throw new Error(response.error);
@@ -553,9 +582,18 @@ chrome.action.onClicked.addListener((tab: chrome.tabs.Tab) => {
 	}
 });
 
-// Listen for messages from userScripts (overlay in page)
+// Listen for messages from userScripts (overlay in page, nested runtime calls
+// from background-initiated chrome.userScripts.execute() invocations)
 if (chrome.runtime.onUserScriptMessage) {
-	chrome.runtime.onUserScriptMessage.addListener((message, _sender, sendResponse) => {
+	chrome.runtime.onUserScriptMessage.addListener((message, sender, sendResponse) => {
+		// First, try to route to active background-initiated executions. This
+		// handles nested nativeClick()/nativeType()/etc. calls issued from
+		// inside skill code running in a browserjs() wrapper that was launched
+		// by the offscreen REPL path (sidepanel closed).
+		if (resolveBackgroundUserScriptMessage(message, sender, sendResponse)) {
+			return true;
+		}
+
 		if (message.type === "abort-repl") {
 			chrome.runtime.sendMessage(message);
 			sendResponse({ success: true });
@@ -578,6 +616,28 @@ chrome.runtime.onMessage.addListener(
 			};
 			sendResponse(stateData);
 			return false;
+		}
+
+		// Offscreen REPL proxy runtime relay: executes browserjs() / navigate() /
+		// nativeClick()-family calls on behalf of the offscreen sandbox when the
+		// sidepanel is closed. See src/bridge/offscreen-runtime-providers.ts.
+		if (message.type === "bg-runtime-exec") {
+			const runtimeType = message.runtimeType as "browser-js" | "navigate" | "native-input";
+			const payload = (message.payload as Record<string, unknown>) ?? {};
+			const reqWindowId = typeof message.windowId === "number" ? (message.windowId as number) : currentWindowId;
+			// Ensure storage exists for skill lookup during browser-js execution.
+			if (runtimeType === "browser-js") {
+				ensureBackgroundStorage();
+			}
+			handleBgRuntimeExec(runtimeType, payload, reqWindowId)
+				.then((response) => sendResponse(response))
+				.catch((err: unknown) =>
+					sendResponse({
+						success: false,
+						error: err instanceof Error ? err.message : String(err),
+					}),
+				);
+			return true; // async response
 		}
 
 		return false;

@@ -12,6 +12,7 @@
 - Bridge settings now use `chrome.storage.local` as the canonical runtime source of truth; the background worker lazily seeds defaults, performs one-time legacy IndexedDB migration, and reconciles live URL/token/sensitive-access changes without sidepanel mirroring.
 - BridgeTab is now a management panel with status, bridge blocking, sensitive-access control, and advanced remote override fields instead of a mandatory local setup form.
 - Same-host bridge onboarding no longer requires opening the sidepanel first or manually pasting the local token.
+- Bridge REPL with the sidepanel closed now exposes the full browserjs()/navigate()/nativeClick-family runtime in the offscreen sandbox. The offscreen document hosts the sandbox iframe but proxies runtime calls to the background service worker, which owns tab/userScripts/debugger access and runs the actual script injection (including domain-scoped skill libraries). Previously only the bare sandbox sandbox was available, so `shuvgeist repl 'return await browserjs(...)'` failed unless the sidepanel was open.
 
 ### Fixed
 

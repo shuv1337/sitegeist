@@ -374,11 +374,24 @@ The extension operates across multiple isolated JavaScript contexts:
 | Context | Access | Used By |
 |---------|--------|---------|
 | **Extension pages** (sidepanel, background) | Chrome APIs, IndexedDB, full extension permissions | Agent, tools, storage, UI |
+| **Offscreen document** (offscreen.html) | DOM + iframe creation, `chrome.runtime` messaging, IndexedDB — but **no** `chrome.tabs` / `chrome.userScripts` / `chrome.debugger` | Hosts REPL sandbox iframe when sidepanel is closed (bridge REPL path) |
 | **Sandbox** (sandbox.html iframe) | `unsafe-eval`, CDN access, no Chrome APIs | REPL code execution |
 | **USER_SCRIPT world** | Page DOM (isolated JS scope), `chrome.runtime.sendMessage` | `browserjs()`, overlay, extract_image |
 | **MAIN world** | Page's actual JS scope (variables, frameworks, localStorage) | Debugger tool `eval` action |
 
 Key isolation: USER_SCRIPT world can see the DOM but not page JavaScript variables. MAIN world access requires the debugger tool (attaches Chrome debugger).
+
+### Bridge REPL Runtime Providers (sidepanel-closed path)
+
+When the bridge dispatches `shuvgeist repl '...'` and the sidepanel is not open, execution runs in the offscreen document. The offscreen document has DOM (so it can host the sandbox iframe) but no `chrome.tabs` / `chrome.userScripts` / `chrome.debugger`. To still expose the full browser runtime to user code, the offscreen sandbox is injected with **proxy** runtime providers (`src/bridge/offscreen-runtime-providers.ts`):
+
+- `OffscreenBrowserJsProxy` — injects `browserjs()` with the same surface as the sidepanel provider.
+- `OffscreenNavigateProxy` — injects `navigate()`.
+- `OffscreenNativeInputProxy` — injects `nativeClick` / `nativeType` / `nativePress` / `nativeKeyDown` / `nativeKeyUp`.
+
+Each proxy forwards its `handleMessage()` payload to the background service worker via `chrome.runtime.sendMessage({ type: "bg-runtime-exec", ... })`. The background-side handler (`src/bridge/background-runtime-handler.ts`) runs the real Chrome API operations: `NavigateTool.execute()`, `NativeInputEventsRuntimeProvider.handleMessage()`, and a self-contained `chrome.userScripts.execute()` wrapper that does **not** depend on the sidepanel's DOM-bound `RUNTIME_MESSAGE_ROUTER`. Nested native-input calls from inside skill code running in the background-launched user script are routed back via the same `chrome.runtime.onUserScriptMessage` listener.
+
+This mirrors the sidepanel's provider wiring (`NativeInputEventsRuntimeProvider` + `BrowserJsRuntimeProvider` + `NavigateRuntimeProvider`) so the CLI REPL surface is identical regardless of sidepanel state.
 
 ---
 
@@ -391,7 +404,8 @@ Key isolation: USER_SCRIPT world can see the DOM but not page JavaScript variabl
     sidepanel: 'src/sidepanel.ts',
     debug: 'src/debug.ts',
     icons: 'src/icons.ts',
-    background: 'src/background.ts'
+    background: 'src/background.ts',
+    offscreen: 'src/offscreen.ts'
 }
 ```
 

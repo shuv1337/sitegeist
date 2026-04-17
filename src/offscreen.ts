@@ -7,6 +7,7 @@
 
 import { SandboxIframe } from "@mariozechner/pi-web-ui";
 import type { BridgeReplMessageResponse, BridgeToOffscreenMessage } from "./bridge/internal-messages.js";
+import { buildOffscreenRuntimeProviders } from "./bridge/offscreen-runtime-providers.js";
 
 chrome.runtime.onMessage.addListener(
 	(
@@ -20,7 +21,7 @@ chrome.runtime.onMessage.addListener(
 		}
 
 		if (message.type === "bridge-repl-execute") {
-			executeRepl(message.params.code, message.params.title)
+			executeRepl(message.params.code, message.params.title, message.windowId)
 				.then((result) => {
 					sendResponse({ ok: true, result } as BridgeReplMessageResponse);
 				})
@@ -37,6 +38,7 @@ chrome.runtime.onMessage.addListener(
 async function executeRepl(
 	code: string,
 	_title: string,
+	windowId?: number,
 ): Promise<{
 	output: string;
 	files: Array<{ fileName: string; mimeType: string; size: number; contentBase64: string }>;
@@ -48,7 +50,11 @@ async function executeRepl(
 
 	try {
 		const sandboxId = `offscreen-repl-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-		const result = await sandbox.execute(sandboxId, code, [], []);
+		// Inject proxy providers so browserjs() / navigate() / nativeClick-family
+		// calls get forwarded to the background service worker, which has full
+		// Chrome API access.
+		const providers = buildOffscreenRuntimeProviders(windowId);
+		const result = await sandbox.execute(sandboxId, code, providers, []);
 
 		let output = "";
 		if (result.console && result.console.length > 0) {

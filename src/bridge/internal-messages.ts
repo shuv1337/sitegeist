@@ -52,8 +52,40 @@ export type SidepanelToBackgroundMessage = { type: "bridge-get-state" };
 // ---------------------------------------------------------------------------
 
 export type BridgeToOffscreenMessage =
-	| { type: "bridge-repl-execute"; params: ReplParams }
+	| { type: "bridge-repl-execute"; params: ReplParams; windowId?: number }
 	| { type: "bridge-keepalive-ping" };
+
+// ---------------------------------------------------------------------------
+// Offscreen -> Background runtime proxy messages
+//
+// When the sidepanel is closed, the offscreen document hosts the REPL sandbox
+// but has no access to chrome.tabs / chrome.userScripts / chrome.debugger.
+// The proxy runtime providers injected into that sandbox relay browserjs(),
+// navigate(), and nativeClick()/nativeType()/etc. calls to the background
+// service worker via these messages.
+// ---------------------------------------------------------------------------
+
+export type BgRuntimeType = "browser-js" | "navigate" | "native-input";
+
+export interface BgRuntimeExecMessage {
+	type: "bg-runtime-exec";
+	runtimeType: BgRuntimeType;
+	payload: Record<string, unknown>;
+	windowId?: number;
+	/** Sandbox id from the offscreen REPL; used to route user-script messages
+	 *  (e.g. nested nativeClick calls from skill code) back through the same
+	 *  execution context while background.userScripts.execute() is pending. */
+	sandboxId?: string;
+}
+
+export interface BgRuntimeExecResponse {
+	success: boolean;
+	result?: unknown;
+	error?: string;
+	stack?: string;
+	console?: Array<{ type: string; text: string }>;
+	cancelled?: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Shared response types
