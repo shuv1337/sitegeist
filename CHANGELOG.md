@@ -17,6 +17,7 @@
 
 - Background bridge reconnects now react immediately to URL/token/sensitive-access changes even when already connected.
 - Bridge `disabled` state now means user-blocked only; token bootstrap failures degrade to disconnected/retryable state instead of masquerading as disabled.
+- Bridge REPL no longer advertises itself as unavailable just because the sidepanel is closed. The background worker now treats REPL as dynamically available, serializes offscreen-document setup, and waits for an explicit ping/ready handshake before routing execution there, fixing the false `REPL requires sidepanel or offscreen document` failure window. When the sidepanel is open, the bridge REPL path now also uses the same browser helpers as the normal REPL (`browserjs()`, `navigate()`, native input providers) instead of silently running in a stripped-down sandbox.
 
 ## [1.1.3] - 2026-04-06
 

@@ -860,10 +860,17 @@ async function handleBridgeReplExecute(params: { title: string; code: string }):
 	output: string;
 	files: Array<{ fileName: string; mimeType: string; size: number; contentBase64: string }>;
 }> {
+	const navigateTool = new NavigateTool();
+	const pageProviders = [new NativeInputEventsRuntimeProvider({ windowId: currentWindowId })];
+	const runtimeProviders = [
+		...pageProviders,
+		new BrowserJsRuntimeProvider(pageProviders, currentWindowId),
+		new NavigateRuntimeProvider(navigateTool),
+	];
 	const result = await executeJavaScript(
 		params.code,
-		[], // runtime providers for sidepanel context
-		undefined, // signal
+		runtimeProviders,
+		undefined,
 		() => chrome.runtime.getURL("sandbox.html"),
 		params.title,
 		currentWindowId,

@@ -62,30 +62,68 @@ function isSidepanelOpen(): boolean {
 // ============================================================================
 
 let offscreenReady = false;
+let offscreenSetupPromise: Promise<void> | null = null;
+
+function delay(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pingOffscreenDocument(): Promise<boolean> {
+	const response = await sendMessageSafe<{ ok?: boolean }>({
+		type: "bridge-keepalive-ping",
+	} as BridgeToOffscreenMessage);
+	return response?.ok === true;
+}
+
+async function waitForOffscreenDocumentReady(): Promise<void> {
+	const maxAttempts = 40;
+	for (let attempt = 0; attempt < maxAttempts; attempt++) {
+		if (await pingOffscreenDocument()) {
+			offscreenReady = true;
+			return;
+		}
+		await delay(25);
+	}
+	throw new Error("Offscreen document did not become ready");
+}
 
 async function ensureOffscreenDocument(): Promise<void> {
-	if (offscreenReady) return;
-
-	// Check if offscreen document already exists
-	const contexts = await chrome.runtime.getContexts({
-		contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT],
-	});
-	if (contexts.length > 0) {
-		offscreenReady = true;
-		return;
+	if (offscreenReady) {
+		if (await pingOffscreenDocument()) return;
+		offscreenReady = false;
 	}
 
-	try {
-		await chrome.offscreen.createDocument({
-			url: "offscreen.html",
-			reasons: [chrome.offscreen.Reason.WORKERS],
-			justification: "REPL sandbox execution for bridge commands",
+	if (offscreenSetupPromise) {
+		return offscreenSetupPromise;
+	}
+
+	offscreenSetupPromise = (async () => {
+		const offscreenUrl = chrome.runtime.getURL("offscreen.html");
+		const contexts = await chrome.runtime.getContexts({
+			contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT],
+			documentUrls: [offscreenUrl],
 		});
-		offscreenReady = true;
-		console.log("[Background] Offscreen document created");
-	} catch (err) {
-		console.error("[Background] Failed to create offscreen document:", err);
-		throw err;
+		if (contexts.length === 0) {
+			try {
+				await chrome.offscreen.createDocument({
+					url: "offscreen.html",
+					reasons: [chrome.offscreen.Reason.WORKERS],
+					justification: "REPL sandbox execution for bridge commands",
+				});
+				console.log("[Background] Offscreen document created");
+			} catch (err) {
+				console.error("[Background] Failed to create offscreen document:", err);
+				throw err;
+			}
+		}
+
+		await waitForOffscreenDocumentReady();
+	})();
+
+	try {
+		await offscreenSetupPromise;
+	} finally {
+		offscreenSetupPromise = null;
 	}
 }
 
@@ -263,9 +301,8 @@ function getCurrentCapabilities(): BridgeCapability[] {
 		if (sessionCapabilities.has(cap)) {
 			return sidepanelOpen;
 		}
-		if (cap === "repl") {
-			return sidepanelOpen || offscreenReady;
-		}
+		// REPL is available even with the sidepanel closed because the background
+		// worker can lazily create and warm the offscreen document on demand.
 		return true;
 	});
 }
