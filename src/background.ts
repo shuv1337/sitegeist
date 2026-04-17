@@ -160,27 +160,41 @@ const replRouter: ReplRouter = {
 			throw Object.assign(new Error("REPL execution aborted"), { code: ErrorCodes.ABORTED });
 		}
 
-		// Strategy 1: Route to sidepanel if open
+		// Strategy 1: Route to sidepanel if open.
+		// - response.ok === true  -> success, return.
+		// - response.ok === false -> REAL error from user code; rethrow so the caller sees it.
+		// - response === null     -> no receiver (sidepanel actually closed between isSidepanelOpen()
+		//                            check and sendMessage); fall through to offscreen.
 		if (isSidepanelOpen()) {
-			try {
-				const response = await sendMessageSafe<BridgeReplMessageResponse>({
-					type: "bridge-repl-execute",
-					params,
-				} as BridgeToSidepanelMessage);
-				if (response?.ok) return response.result;
-				if (response && !response.ok) throw new Error(response.error);
-			} catch (err) {
-				console.warn("[Background] REPL routing to sidepanel failed, trying offscreen:", err);
+			const response = await sendMessageSafe<BridgeReplMessageResponse>({
+				type: "bridge-repl-execute",
+				params,
+			} as BridgeToSidepanelMessage);
+			if (response?.ok) return response.result;
+			if (response && !response.ok) {
+				throw new Error(response.error);
 			}
+			console.warn("[Background] Sidepanel did not respond to bridge-repl-execute; falling back to offscreen");
 		}
 
-		// Strategy 2: Route to offscreen document
+		// Strategy 2: Route to offscreen document.
+		// We only translate INFRASTRUCTURE failures (offscreen doc creation/ping)
+		// into the capability-disabled error. User-code errors from a working
+		// offscreen doc are returned as response.ok === false and MUST be propagated
+		// untouched so the CLI shows the actual message.
+		let infraError: unknown;
 		try {
 			await ensureOffscreenDocument();
 			// Ensure background-side app storage is available so offscreen's
 			// proxy providers can rely on the background-owned browserjs handler
 			// reading the IndexedDB-backed skills store.
 			ensureBackgroundStorage();
+		} catch (err) {
+			infraError = err;
+			console.warn("[Background] REPL offscreen setup failed:", err);
+		}
+
+		if (!infraError) {
 			const windowId = await resolveWindowId();
 			const response = await sendMessageSafe<BridgeReplMessageResponse>({
 				type: "bridge-repl-execute",
@@ -188,9 +202,10 @@ const replRouter: ReplRouter = {
 				windowId,
 			} as BridgeToOffscreenMessage);
 			if (response?.ok) return response.result;
-			if (response && !response.ok) throw new Error(response.error);
-		} catch (err) {
-			console.warn("[Background] REPL routing to offscreen failed:", err);
+			if (response && !response.ok) {
+				throw new Error(response.error);
+			}
+			console.warn("[Background] Offscreen did not respond to bridge-repl-execute");
 		}
 
 		throw Object.assign(new Error("REPL requires sidepanel or offscreen document"), {

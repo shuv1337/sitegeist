@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- Bridge REPL router no longer swallows real user-code errors behind the generic "REPL requires sidepanel or offscreen document" message. Failed `response.ok === false` results from the sidepanel or offscreen document are now rethrown with their actual error text, while only genuine infrastructure failures (offscreen setup error, no receiver) fall through to the capability-disabled error.
+
 ## [1.1.4] - 2026-04-17
 
 ### Added
