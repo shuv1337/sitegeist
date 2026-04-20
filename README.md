@@ -10,6 +10,16 @@ This repo also ships:
 
 Works on Chrome 141+ and equivalent Edge builds.
 
+## Screenshots
+
+### Extension sidebar
+
+![Shuvgeist extension sidebar](site/src/frontend/img/preview-sidebar.png)
+
+### CLI bridge
+
+![Shuvgeist CLI bridge help](site/src/frontend/img/preview-cli.png)
+
 ## What ships today
 
 ### Extension
@@ -75,7 +85,6 @@ Run `shuvgeist --help` for the full command reference.
 
 - `proxy/`: minimal self-hosted CORS proxy with host allowlisting and filtered headers
 - `site/`: static landing page and install guide
-- `systemd/shuvgeist-bridge.service`: user service for keeping the local bridge running
 
 ## Architecture
 
@@ -220,25 +229,9 @@ Sensitive bridge access enables commands such as:
 - `shuvgeist network body`
 - `shuvgeist network curl`
 
-### systemd user service
+### Bridge management
 
-For a persistent local bridge on Linux, install the provided user unit:
-
-```bash
-install -Dm644 systemd/shuvgeist-bridge.service ~/.config/systemd/user/shuvgeist-bridge.service
-systemctl --user daemon-reload
-systemctl --user enable --now shuvgeist-bridge.service
-```
-
-The unit intentionally runs the development source entrypoint through `tsx`, not the built CLI artifact, so bridge code changes are picked up after a restart.
-
-After changing the bridge implementation or CLI entrypoint:
-
-```bash
-install -Dm644 systemd/shuvgeist-bridge.service ~/.config/systemd/user/shuvgeist-bridge.service
-systemctl --user daemon-reload
-systemctl --user restart shuvgeist-bridge.service
-```
+The bridge is managed automatically by the extension and CLI. You do not need to install or run a separate systemd unit.
 
 ## Proxy
 
@@ -304,7 +297,7 @@ npm run test:coverage
 - after extension UI/runtime changes, rebuild with `npm run build` so `dist-chrome/` is current
 - after CLI bridge changes, rebuild with `npm run build:cli`
 - linked `../mini-lit` or `../pi-mono` changes must be rebuilt in those repos before rebuilding Shuvgeist
-- the bridge should run via the user systemd unit, not an ad-hoc shell process
+- the bridge is managed automatically; do not run it as a separate ad-hoc shell process
 
 ## Project layout
 
@@ -330,8 +323,6 @@ provider-presets/
   proxx.json                 importable custom provider preset
 skills/
   shuvgeist/                 coding-agent skill for the CLI bridge
-systemd/
-  shuvgeist-bridge.service   persistent user service for the bridge
 tests/
   unit/ integration/ component/ e2e/
 ```
