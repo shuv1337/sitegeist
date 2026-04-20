@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+## [1.1.7] - 2026-04-20
+
+### Changed
+
+- Welcome orb redesigned with layered rings, animated nodes, and the branded orange/yellow palette so the empty-session view matches the rest of the Shuvgeist identity.
+- Welcome brand title now uses the MesloLGS mono font to visually tie the sidepanel into the wider Shuvgeist brand treatment.
+- Tagline copy updated across the extension manifest, welcome message, and landing page from "AI companion for the web" to "clanker for the web".
+- README rewritten with a focused intro, sidebar screenshots, and trimmed GitNexus/systemd sections; `.agents/` is now gitignored.
+- Bridge management documentation replaces the systemd user-service instructions: the bridge is now managed automatically by the extension and CLI. `AGENTS.md`, `CLAUDE.md`, and the README reflect this, and the old `systemd/shuvgeist-bridge.service` section is removed.
+
 ## [1.1.6] - 2026-04-17
 
 ### Added

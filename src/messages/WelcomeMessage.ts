@@ -67,7 +67,7 @@ export class WelcomeMessageElement extends LitElement {
 				<div class="text-center mb-8">
 					<h1 class="welcome-brand-title text-5xl font-bold mb-4">Shuvgeist</h1>
 					<p class="text-xl text-muted-foreground">
-						Your AI companion for the web to
+						Your clanker for the web to
 						<span
 							class="rotating-word inline-block min-w-[120px] text-left font-semibold text-foreground"
 							key=${this.currentWordIndex}

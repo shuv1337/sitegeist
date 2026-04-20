@@ -8,9 +8,9 @@ If the user did not give you a concrete task, read README.md first.
 - After code changes that affect the extension UI or runtime: rebuild with `npm run build` so `dist-chrome/` is updated. There is no persistent dev watcher; the agent must rebuild explicitly.
 - After code changes that affect the CLI bridge: rebuild with `npm run build:cli`.
 - NEVER commit unless the user asks.
-- Keep the Shuvgeist bridge running via the user systemd unit `shuvgeist-bridge.service`, not an ad-hoc shell process.
-- The bridge unit should point at the development source tree (`node_modules/.bin/tsx src/bridge/cli.ts serve ...`), not the built `dist-cli` artifact, so a service restart picks up local bridge changes.
-- When the bridge implementation or CLI entrypoint changes, update `systemd/shuvgeist-bridge.service`, install it to `~/.config/systemd/user/shuvgeist-bridge.service`, then run `systemctl --user daemon-reload && systemctl --user restart shuvgeist-bridge.service`.
+- Keep the Shuvgeist bridge managed automatically by the extension and CLI, not by an ad-hoc shell process.
+- The automatic bridge startup path should point at the development source tree (`node_modules/.bin/tsx src/bridge/cli.ts serve ...`), not the built `dist-cli` artifact, so local bridge changes are picked up after restart.
+- When the bridge implementation or CLI entrypoint changes, verify the automatic bridge startup path still works and update the relevant bridge bootstrap or docs as needed.
 
 ## Code Quality
 - No `any` types unless absolutely necessary
@@ -90,7 +90,7 @@ static/
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **shuvgeist** (4459 symbols, 8556 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **shuvgeist** (4449 symbols, 8547 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 
