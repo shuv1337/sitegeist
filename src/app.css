@@ -117,8 +117,8 @@ body {
 	transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 	position: relative;
 	overflow: hidden;
-	background: linear-gradient(135deg, rgba(217, 79, 0, 0.15), rgba(255, 107, 0, 0.15), rgba(212, 165, 0, 0.15));
-	border: 1px solid rgba(255, 107, 0, 0.3);
+	background: linear-gradient(135deg, rgba(130, 170, 255, 0.16), rgba(127, 219, 202, 0.14), rgba(134, 59, 255, 0.16));
+	border: 1px solid rgba(130, 170, 255, 0.28);
 	backdrop-filter: blur(10px);
 }
 
@@ -129,7 +129,7 @@ body {
 	left: 0;
 	right: 0;
 	bottom: 0;
-	background: linear-gradient(90deg, transparent, rgba(255, 107, 0, 0.4), transparent);
+	background: linear-gradient(90deg, transparent, rgba(127, 219, 202, 0.32), transparent);
 	background-size: 200% 100%;
 	animation: shimmer 3s ease-in-out infinite;
 	opacity: 0;
@@ -142,9 +142,9 @@ body {
 
 .tutorial-pill:hover {
 	transform: translateY(-2px) scale(1.03);
-	background: linear-gradient(135deg, rgba(217, 79, 0, 0.25), rgba(255, 107, 0, 0.25), rgba(212, 165, 0, 0.25));
-	box-shadow: 0 8px 20px -4px rgba(255, 107, 0, 0.5);
-	border-color: rgba(255, 107, 0, 0.5);
+	background: linear-gradient(135deg, rgba(130, 170, 255, 0.24), rgba(127, 219, 202, 0.22), rgba(183, 133, 233, 0.24));
+	box-shadow: 0 8px 20px -4px rgba(130, 170, 255, 0.38);
+	border-color: rgba(127, 219, 202, 0.42);
 }
 
 .tutorial-pill:active {
