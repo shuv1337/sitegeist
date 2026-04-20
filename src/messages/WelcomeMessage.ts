@@ -65,7 +65,7 @@ export class WelcomeMessageElement extends LitElement {
 			<div class="welcome-orb-container my-8 flex flex-col items-center justify-center">
 				<!-- Title and tagline first -->
 				<div class="text-center mb-8">
-					<h1 class="text-5xl font-bold mb-4">Shuvgeist</h1>
+					<h1 class="welcome-brand-title text-5xl font-bold mb-4">Shuvgeist</h1>
 					<p class="text-xl text-muted-foreground">
 						Your AI companion for the web to
 						<span
