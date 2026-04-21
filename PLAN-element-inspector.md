@@ -6,12 +6,13 @@ Inspired by the Claude Desktop app's Preview inspector and by [react-grab](https
 
 ## Relevant Codebase Alignment
 
-- **Element picker overlay already exists**: [`src/tools/ask-user-which-element.ts`](src/tools/ask-user-which-element.ts) contains `createElementPickerOverlay()` (lines 56–500) plus the `chrome.userScripts.execute()` injection glue. Today it is called only by the agent tool; we will refactor it into a shared helper that both the agent tool and the new user-initiated flow use.
+- **Element picker overlay already exists**: [`src/tools/ask-user-which-element.ts`](src/tools/ask-user-which-element.ts) contains `createElementPickerOverlay()` (lines 56–500) plus the `chrome.userScripts.execute()` injection glue, and an `AbortSignal`-driven cleanup path that dispatches `shuvgeist-element-cancel` into the page. Today it is called only by the agent tool; we will refactor it into a shared helper that both the agent tool and the new user-initiated flow use.
 - **`ElementInfo` type already defined** at [`ask-user-which-element.ts:21-36`](src/tools/ask-user-which-element.ts): `{ selector, xpath, html, tagName, attributes, text, boundingBox, computedStyles, parentChain }`. No changes needed.
-- **Composer exposes a staging API**: `AgentInterface.setInput(text, attachments?)` at `node_modules/@mariozechner/pi-web-ui/src/components/AgentInterface.ts:49-58` programmatically seeds the editor with text + attachments. Staged attachments render as `<attachment-tile>` via `MessageEditor` and flow into `prompt()` automatically as a `user-with-attachments` message.
-- **`Attachment` shape is permissive**: `{ id, type: "image" | "document", fileName, mimeType, size, content, extractedText?, preview? }` (attachment-utils.ts:11-20). Our element becomes a `type: "document"` attachment with `mimeType: "application/json"` and the serialized context in `extractedText`. No fork of pi-web-ui required.
+- **Composer exposes reactive fields directly**: `AgentInterface._messageEditor` is queried via `@query("message-editor")` and `MessageEditor.attachments` / `MessageEditor.value` are both `@property`-reactive. We append to `attachments` directly; we do **not** call `AgentInterface.setInput(text, attachments)` because it also overwrites `value` and would clobber anything the user is typing between the read and the write (see §"Race avoidance" below).
+- **`Attachment` shape is permissive**: `{ id, type: "image" | "document", fileName, mimeType, size, content, extractedText?, preview? }` (`node_modules/@mariozechner/pi-web-ui/dist/utils/attachment-utils.d.ts`). Our element becomes a `type: "document"` attachment with `mimeType: "application/json"` and the serialized context in `extractedText`. No fork of pi-web-ui required.
+- **Attachments flow to the model via `convertAttachments()`** (`pi-web-ui/dist/components/Messages.js:291`): for `type: "document"` with `extractedText`, it emits a single `TextContent` block `\n\n[Document: <fileName>]\n<extractedText>`. `content` (base64) is **not** read on this path — it is only used by `AttachmentOverlay` for raw preview/download. We still populate it correctly for parity with PDF/DOCX attachments.
 - **Tab resolution already exists**: `resolveTabTarget` in `src/tools/helpers/browser-target.ts` — reused as-is.
-- **Toast + ChatPanel already available** in `src/sidepanel.ts` for user feedback and wiring the button.
+- **Toast + ChatPanel already available** in `src/sidepanel.ts` (`src/components/Toast.ts` exposes `Toast.show/success/error`).
 
 ## Goals
 
@@ -20,7 +21,7 @@ Inspired by the Claude Desktop app's Preview inspector and by [react-grab](https
 3. User can add text, remove the chip, or pick additional elements before sending.
 4. On send, the agent receives the element context inside a `user-with-attachments` message — the existing attachment pipeline carries it with no special handling.
 5. Zero modifications to `pi-web-ui`, `pi-agent-core`, or the bridge protocol.
-6. Agent-tool behavior (`AskUserWhichElementTool`) is unchanged after the refactor.
+6. Agent-tool behavior (`AskUserWhichElementTool`) is unchanged after the refactor, including its `AbortSignal` cancellation path.
 
 ## Non-Goals for V1
 
@@ -41,7 +42,7 @@ Inspired by the Claude Desktop app's Preview inspector and by [react-grab](https
 [Sidepanel Inspect button]
         │
         ▼
- resolveTabTarget() ──► picker.ts (shared)
+ resolveTabTarget() ──► element-picker.ts (shared)
         │                     │
         │                     ▼
         │            chrome.userScripts.execute(
@@ -56,9 +57,7 @@ Inspired by the Claude Desktop app's Preview inspector and by [react-grab](https
  elementToAttachment(info) ──► Attachment
         │
         ▼
- chatPanel.agentInterface.setInput(
-   existingText,
-   [...existingAttachments, elementAttachment])
+ editor.attachments = [...editor.attachments, att]   // direct mutation
         │
         ▼
  MessageEditor renders <attachment-tile>
@@ -69,18 +68,20 @@ Inspired by the Claude Desktop app's Preview inspector and by [react-grab](https
 
 ### Why masquerade as a document attachment
 
-The `Attachment` union is only `"image" | "document"`. Extending it means forking `pi-web-ui`, which we want to avoid. A `type: "document"` attachment with structured `extractedText` renders cleanly in `AttachmentTile` (falls through to the document-icon branch at lines 70–86), shows a truncated filename, and exposes the full content via the existing `AttachmentOverlay` click handler. The model sees `extractedText` — the same path used for PDFs, DOCX, text files. No new renderer, no new tool, no protocol changes.
+The `Attachment` union is only `"image" | "document"`. Extending it means forking `pi-web-ui`, which we want to avoid. A `type: "document"` attachment with structured `extractedText` renders cleanly in `AttachmentTile` (falls through to the document-icon branch, lines 66–86), shows a truncated filename, and exposes the full content via the existing `AttachmentOverlay` click handler. The model sees `extractedText` via `convertAttachments()` — the same path used for PDFs, DOCX, text files. No new renderer, no new tool, no protocol changes.
+
+Note on format inconsistency: existing document attachments (PDF/DOCX/PPTX/XLSX) serialize `extractedText` as ad-hoc XML (e.g. `<pdf filename="x"><page number="1">…</page></pdf>`). We use JSON instead to avoid hand-rolled escaping of user-controlled strings (`selector`, attribute values, page title, inner HTML). This is a deliberate, scoped divergence — the model consumes the raw text regardless of format.
 
 ### Attachment shape for an inspected element
 
 ```ts
 {
-  id: `element_${Date.now()}_${random}`,
+  id: `element_${Date.now()}_${randomId}`,
   type: "document",
-  fileName: truncatedSelector + ".json",  // e.g. "h3.text-lg.json"
+  fileName: `${sanitizedSelectorSlug}.json`,   // see §"fileName sanitization"
   mimeType: "application/json",
-  size: extractedText.length,
-  content: base64(extractedText),         // required by Attachment contract
+  size: extractedText.length,                  // bytes of the JSON, not the base64 blob
+  content: utf8ToBase64(extractedText),        // UTF-8-safe base64; see §"Base64 encoding"
   extractedText: JSON.stringify({
     kind: "inspected-element",
     page: {
@@ -94,7 +95,7 @@ The `Attachment` union is only `"image" | "document"`. Extending it means forkin
       text: "Team and graph relationships",
       boundingBox: { x: 240, y: 412, width: 1031, height: 28 },
       attributes: { class: "text-lg font-semibold text-foreground" },
-      computedStyles: { fontSize: "18px" },
+      computedStyles: { fontSize: "18px", color: "rgb(17, 24, 39)" /* … */ },
       parentChain: ["section.card", "main"],
       html: "<h3 class=\"text-lg font-semibold text-foreground\">Team and graph relationships</h3>"
     }
@@ -102,7 +103,7 @@ The `Attachment` union is only `"image" | "document"`. Extending it means forkin
 }
 ```
 
-Using JSON instead of ad-hoc XML removes the need for manual entity escaping. All user-controlled strings (`selector`, `text`, attribute values, `html`, page title) are serialized through `JSON.stringify()`, so `<`, `&`, quotes, and `]]>`-style edge cases cannot corrupt the payload format.
+All user-controlled strings are serialized through `JSON.stringify()`, so `<`, `&`, quotes, and `]]>`-style edge cases cannot corrupt the payload format.
 
 ---
 
@@ -112,22 +113,37 @@ Using JSON instead of ad-hoc XML removes the need for manual entity escaping. Al
 
 #### `src/tools/helpers/element-picker.ts`
 
-Shared picker module. Extracted from `ask-user-which-element.ts`.
+Shared picker module. Extracted from `ask-user-which-element.ts` with no behavior change.
 
 ```ts
+export class ElementPickCancelled extends Error {
+  readonly code = "cancelled" as const;
+}
+
 export async function pickElement(
   tabId: number,
-  opts?: { message?: string }
-): Promise<ElementInfo>;
+  opts?: { message?: string; signal?: AbortSignal }
+): Promise<ElementInfo>;   // throws ElementPickCancelled on Escape / Cancel button / aborted signal
+                             // throws Error on other failures (already-running guard, injection blocked)
 ```
 
 Contents moved from `ask-user-which-element.ts`:
-- `createElementPickerOverlay` (lines 56–500)
-- The `chrome.userScripts.execute` wrapper with `world: "USER_SCRIPT"` and `worldId: "shuvgeist-element-picker"`
-- The `window.__shuvgeistElementPicker` guard
-- Error surface for cancel / already-running / injection-blocked
+- `createElementPickerOverlay` (lines 56–500) — unchanged.
+- The `chrome.userScripts.execute` wrapper with `world: "USER_SCRIPT"` and `worldId` kept as in the current tool.
+- The `window.__shuvgeistElementPicker` guard.
+- The `AbortSignal` plumbing: subscribe to `signal`, on abort dispatch a second `chrome.userScripts.execute({ js: [{ code: "window.dispatchEvent(new CustomEvent('shuvgeist-element-cancel'))" }] })` and reject with `ElementPickCancelled`.
+- Convert the current `resolve(null)` cancel path into `throw new ElementPickCancelled("Element selection was cancelled")` at the helper boundary (the in-page overlay still resolves `null`; the helper translates).
 
-No behavior change — just relocation. `ElementInfo` type re-exported from here.
+`ElementInfo` is re-exported from this module so existing imports (`ask-user-which-element-renderer.ts`, etc.) keep working via either path. `ask-user-which-element.ts` will re-export from the helper to avoid widespread import rewrites.
+
+##### Minor overlay tweak (inside `getElementInfo`)
+
+Raise the in-page truncation limits so the sidepanel flow has useful context:
+
+- `text`: 500 → **1000** chars.
+- `html` (`outerHTML.substring`): 1000 → **4000** chars; if truncated, append the literal marker `"<!-- [truncated] -->"` to the returned string.
+
+The agent-tool path also benefits. Defense-in-depth truncation in `element-attachment.ts` remains in case these ever drift.
 
 #### `src/tools/helpers/element-attachment.ts`
 
@@ -144,49 +160,113 @@ export function elementToAttachment(
 ```
 
 Responsibilities:
-- Build the JSON payload from `ElementInfo`
-- Truncate `html` to ~4KB with `<!-- [truncated] -->` marker
-- Truncate `computedStyles` to the 20 most-likely-useful properties (font-size, color, display, position, width, height, margin, padding, border — full list TBD during implementation; default pruning list in the module)
-- Cap `parentChain` depth to 6
-- Build `fileName` from the selector, truncated so the 10-char tile label still makes sense (e.g. `h3.text-lg` not `h3.text-lg.font-semibold.text-foreground`)
-- Base64-encode `extractedText` into `content` (Attachment contract requires `content` to be base64 of the original bytes)
-- Use `JSON.stringify(payload, null, 2)` for `extractedText`; do not hand-roll string concatenation or custom escaping
+
+- Build the JSON payload from `ElementInfo` and `context`.
+- Defensive truncation: `html` capped at 4096 chars (with `<!-- [truncated] -->` marker); `text` capped at 1000 chars.
+- Prune `computedStyles` to a curated 20-key allowlist defined as a module constant:
+  `display, position, width, height, margin, padding, border, color, backgroundColor, fontFamily, fontSize, fontWeight, lineHeight, textAlign, opacity, zIndex, overflow, visibility, cursor, boxSizing`.
+  Missing keys are dropped, not emitted as `undefined`.
+- Cap `parentChain` to the 6 nearest ancestors.
+- **fileName sanitization** (see §"fileName sanitization" below).
+- **Base64 encoding** (see §"Base64 encoding" below).
+- `JSON.stringify(payload, null, 2)` for `extractedText`. Never hand-roll string concatenation.
+
+##### fileName sanitization
+
+Selectors contain characters invalid in filenames (`/`, `:`, `[`, `]`, `#`, `"`, spaces). Sanitize:
+
+```ts
+const slug =
+  (info.selector || info.tagName || "element")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 64) || "element";
+const fileName = `${slug}.json`;
+```
+
+This keeps `AttachmentTile`'s 10-char truncation readable (`h3.text-lg…`).
+
+##### Base64 encoding
+
+`btoa()` throws on non-ASCII (emoji, CJK, em-dash in page text, etc.). Use a UTF-8-safe encoder:
+
+```ts
+function utf8ToBase64(s: string): string {
+  const bytes = new TextEncoder().encode(s);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+```
+
+`content` is populated for parity with PDF/DOCX attachments (so `AttachmentOverlay` can render the raw JSON), but is not on the hot path to the LLM.
 
 ### Modified files
 
 #### `src/tools/ask-user-which-element.ts`
 
-- Delete the inline picker overlay code (lines 40–500-ish).
-- Import `pickElement` from `./helpers/element-picker.ts`.
-- The agent tool's `execute()` becomes a thin wrapper: `resolveTabTarget → pickElement → return ElementInfo` (unchanged return shape).
+- Delete the inline overlay code (lines 40–500-ish) and the `chrome.userScripts.execute` wrapper block.
+- Re-export `ElementInfo` from `./helpers/element-picker.js` to preserve external imports (e.g. `ask-user-which-element-renderer.ts`).
+- `execute()` becomes a thin wrapper:
+  1. Check `signal?.aborted`.
+  2. `resolveTabTarget({ windowId })`.
+  3. Replicate the existing protected-URL guard: `chrome://`, `chrome-extension://`, `moz-extension://`, `about:`.
+  4. `const info = await pickElement(tabId, { message: args.message, signal })`.
+  5. Build the same human-readable `output` string the current tool returns.
+  6. On `ElementPickCancelled`, throw `new Error("Element selection was cancelled")` (matches existing behavior).
 
-Verification: the agent tool must behave identically — same inputs, same outputs, same error messages.
+Verification: the tool must behave identically — same inputs, same outputs, same error messages, same abort semantics.
 
 #### `src/sidepanel.ts`
 
-- Import `Crosshair` from `lucide` (or `MousePointerClick` — TBD during implementation; pick whichever reads clearer in the header).
-- In the header render region (near the existing tab/settings controls around the `renderApp` return), add an icon button: `title="Inspect element"`.
-- `ChatPanel.agentInterface` is already reachable as a public `@state` field; no `pi-web-ui` changes are needed.
-- Click handler:
-  1. Resolve active tab via `resolveTabTarget` (reuse existing helper).
-  2. Early-return with toast if: `chatPanel.agentInterface` is unavailable / tab URL is `chrome://` or `chrome-extension://` / no tabs matched.
-  3. Show a transient toast "Click an element in the page to attach it" (auto-dismiss when picker resolves or errors).
-  4. `await pickElement(tabId)`.
-  5. On success:
-     - Query the live composer state from the existing `message-editor` element:
-       `const editor = chatPanel.agentInterface.querySelector("message-editor") as MessageEditor | null`
-     - Read:
-       `const currentText = editor?.value ?? ""`
-       `const currentAttachments = editor?.attachments ?? []`
-     - Build the new attachment:
-       `const att = elementToAttachment(info, { url, title })`
-     - Stage without overwriting the draft:
-       `chatPanel.agentInterface.setInput(currentText, [...currentAttachments, att])`
-  6. On cancel/error: dismiss toast, show error toast if it was an error (not a cancel).
-- Keep the button enabled while streaming. Staging is safe because it only mutates the local composer draft; the existing send path still blocks while `isStreaming` is true.
-- Allow staging before the first user message. There is always an in-memory agent/editor even when the session is not yet persisted, so the attachment can be staged and sent normally later.
+- Import `Crosshair` from `lucide` (drop-in with existing `History`, `Plus`, `Settings` imports).
+- Import `pickElement, ElementPickCancelled` from `./tools/helpers/element-picker.js`.
+- Import `elementToAttachment` from `./tools/helpers/element-attachment.js`.
+- Import `Toast` from `./components/Toast.js`.
+- Import `resolveTabTarget` from `./tools/helpers/browser-target.js`.
+- In the header render region (inside the existing right-side controls: `<div class="flex items-center gap-1 px-2">`, immediately **before** the existing `Settings` button), add:
+
+```ts
+${Button({
+  variant: "ghost",
+  size: "sm",
+  children: icon(Crosshair, "sm"),
+  onClick: onInspectElementClick,
+  title: "Inspect element",
+})}
+```
+
+- Click handler `onInspectElementClick()`:
+  1. If `!chatPanel.agentInterface`, `Toast.show("Chat is not ready yet", "error")`; return.
+  2. Resolve active tab via `resolveTabTarget({ windowId: currentWindowId })`; wrap in try/catch → error toast on failure.
+  3. Reject protected URLs: `tab.url` starts with `chrome://`, `chrome-extension://`, `moz-extension://`, or `about:` → `Toast.show("Can't inspect this page", "error")`; return.
+  4. Access the editor directly:
+     ```ts
+     const editor = chatPanel.agentInterface.querySelector("message-editor") as MessageEditor | null;
+     if (!editor) { Toast.show("Composer not ready", "error"); return; }
+     if (editor.attachments.length >= editor.maxFiles) {
+       Toast.show(`Max ${editor.maxFiles} attachments reached`, "error");
+       return;
+     }
+     ```
+  5. `const toast = Toast.show("Click an element in the page to attach it", "info", 30000);` (long duration — dismissed explicitly below).
+  6. `try { const info = await pickElement(tabId); const att = elementToAttachment(info, { url: tab.url!, title: tab.title }); editor.attachments = [...editor.attachments, att]; } catch (err) { if (!(err instanceof ElementPickCancelled)) Toast.show(err.message || "Inspect failed", "error"); } finally { toast.remove(); }`
+- Keep the button enabled during streaming; staging mutates local composer state only, and `MessageEditor.handleSend` already blocks on `isStreaming`.
+- Staging before the first user message is safe — the in-memory `agent`/editor exist from app bootstrap, and the first send follows the normal new-session persistence path.
 
 No other files change. No manifest edit. No background/bridge changes.
+
+### Race avoidance — why we mutate `editor.attachments` directly
+
+`AgentInterface.setInput(text, attachments)` (pi-web-ui `AgentInterface.js:53`) sets both `_messageEditor.value = text` and `_messageEditor.attachments = attachments` inside a RAF callback. If we read `editor.value` before awaiting the picker and then call `setInput(currentText, [...currentAttachments, att])`, any keystrokes the user types during the pick (which can last many seconds) are silently discarded on the write.
+
+Mutating only `editor.attachments`:
+
+- avoids touching `value`, so typed text is never overwritten;
+- is immediate (no RAF deferral);
+- is reactive — `MessageEditor.attachments` is `@property` and Lit re-renders the tiles automatically.
+
+This relies on pi-web-ui internals (the `message-editor` custom element name, the `attachments` property, the `maxFiles` property). These are all part of the exported API surface or stable in the shipped `.d.ts`. If pi-web-ui renames either, the sidepanel flow fails loudly (querySelector returns null → error toast). Documented as a known coupling.
 
 ---
 
@@ -194,34 +274,41 @@ No other files change. No manifest edit. No background/bridge changes.
 
 1. **Extract picker to helper** (non-functional refactor).
    - Create `src/tools/helpers/element-picker.ts`.
-   - Move overlay code and injection wrapper.
-   - Update `ask-user-which-element.ts` to import from the helper.
-   - Run: `npm run build` (or existing dev command) and manually fire the agent tool on a test page to confirm identical behavior.
+   - Move overlay code, injection wrapper, and abort-signal plumbing verbatim.
+   - Introduce `ElementPickCancelled`.
+   - Apply the `text` (500→1000) and `html` (1000→4000 + truncated marker) limit bumps inside `getElementInfo`.
+   - Update `ask-user-which-element.ts` to import from the helper and re-export `ElementInfo`.
+   - Verify: run the agent tool on a test page; confirm selector, html length, and cancel behavior match the pre-refactor baseline.
 
 2. **Write `elementToAttachment()`**.
-  - Implement serializer with truncation rules.
-  - Exercise with 2–3 real `ElementInfo` samples (dump from step 1 during testing) — eyeball the output and confirm the JSON payload reads well to a model.
+   - Implement with the allowlist, truncation rules, sanitized fileName, UTF-8-safe base64.
+   - Dump 2–3 real `ElementInfo` samples captured during step 1; eyeball the JSON; verify `fileName` parses into a readable tile label and contains no filesystem-hostile chars.
 
 3. **Add sidebar button + handler**.
-   - Header button placement in `sidepanel.ts`.
-   - Wire click handler as specified above.
-   - Toast on start / error.
+   - Icon button placement in `sidepanel.ts` (inside the right-side controls, before `Settings`).
+   - Wire `onInspectElementClick` exactly as specified.
+   - Long-lived "Click an element in the page to attach it" toast on start, dismissed in `finally`.
 
 4. **Manual test matrix**:
-   - ✅ Pick a simple element on a content site → chip appears → send → agent sees content.
-   - ✅ Pick a deeply nested element → truncation works, no malformed JSON.
-   - ✅ Cancel with Escape → no chip, no errors.
-   - ✅ Try to pick on `chrome://extensions` → graceful toast, no crash.
-   - ✅ Pick while another pick is in flight → guard fires, toast shown.
-   - ✅ Pick, add a second pick → both chips visible, both carried to agent.
-   - ✅ Pick, type text, edit, send → agent receives user text + both attachments.
+   - ✅ Pick a simple element on a content site → chip appears → send → agent sees `[Document: <name>.json]` followed by the JSON payload.
+   - ✅ Pick an element containing non-ASCII text (emoji, CJK, em-dash) → no `btoa` throw; JSON round-trips cleanly.
+   - ✅ Pick an element with `#`, `:`, spaces, `[`, `]` in the selector → `fileName` sanitized, tile readable.
+   - ✅ Pick a deeply nested element → `parentChain` capped at 6, no malformed JSON.
+   - ✅ Cancel with Escape → no chip, no error toast (cancellation is silent).
+   - ✅ Cancel with the in-page "Cancel (ESC)" button → same behavior.
+   - ✅ Try to pick on `chrome://extensions`, `about:blank`, a `moz-extension://` page → graceful toast, no crash, picker not injected.
+   - ✅ Pick while another pick is in flight → `window.__shuvgeistElementPicker` guard fires; helper rejects; error toast shown.
+   - ✅ Pick two elements in succession → both chips visible, both carried to agent.
+   - ✅ Type in the composer, then pick an element mid-sentence → typed text is preserved (race fix).
    - ✅ Pick, click chip's × → chip removed, composer retains text.
-   - ✅ Pick while streaming → attachment is staged, send remains blocked until streaming ends.
-   - ✅ Pick before any user message exists → draft is staged, first send persists the session normally.
+   - ✅ Pick while streaming → chip stages; send remains blocked by `MessageEditor.isStreaming`.
+   - ✅ Pick before any user message exists → chip stages; first send persists the session normally.
+   - ✅ Attempt an 11th pick when `maxFiles=10` is already reached → error toast, picker not launched.
+   - ✅ Regression: run the agent's `ask_user_which_element` tool — same output text, same cancel error message, same abort behavior (abort the agent mid-pick and confirm the overlay cleans up).
 
 5. **Repo validation**:
-   - Run `./check.sh`.
-   - Run `npm run build` so `dist-chrome/` is updated.
+   - `./check.sh` clean.
+   - `npm run build` so `dist-chrome/` is updated.
 
 ---
 
@@ -229,14 +316,17 @@ No other files change. No manifest edit. No background/bridge changes.
 
 | Case | Behavior |
 |---|---|
-| Active tab is `chrome://` or extension URL | Button click shows toast "Can't inspect this page"; picker not injected. |
-| Picker already active on target tab | Guard at `window.__shuvgeistElementPicker` rejects; surface as toast. |
-| User switches tabs mid-pick | MVP: picker stays on original tab until dismissed; we don't attempt to follow. Document as known limitation. |
-| HTML > 4KB | Truncate with `[truncated]` marker in the serialized JSON `html` field. |
-| `parentChain` > 6 deep | Cap to 6 nearest ancestors. |
-| `computedStyles` is huge | Prune to a curated 20-property subset (defined in `element-attachment.ts`). |
-| Session is streaming when user clicks | Button remains enabled; attachment is staged; send remains blocked by the existing `isStreaming` guard in `MessageEditor`. |
-| No persisted session yet | Allow staging; the draft lives in the existing in-memory editor/agent, and the first send follows the normal new-session persistence flow. |
+| Active tab is `chrome://`, `chrome-extension://`, `moz-extension://`, or `about:` | Button click shows toast "Can't inspect this page"; picker not injected. |
+| Picker already active on target tab | `window.__shuvgeistElementPicker` guard rejects; surface as toast. |
+| User switches tabs mid-pick | MVP: picker stays on original tab until dismissed; we do not follow. Known limitation. |
+| `maxFiles` already reached | Error toast; picker not launched. |
+| `html` > 4KB | Overlay truncates at 4KB and appends `<!-- [truncated] -->`; serializer re-checks as defense-in-depth. |
+| `parentChain` > 6 deep | Serializer caps to 6 nearest ancestors. |
+| `computedStyles` | Pruned by serializer to a 20-key allowlist. |
+| Element text contains non-ASCII | `utf8ToBase64` handles it; `extractedText` (JSON string) is already Unicode-safe. |
+| Session is streaming when user clicks | Button remains enabled; attachment is staged; send remains blocked by `MessageEditor.isStreaming`. |
+| No persisted session yet | Allow staging; first send follows the normal new-session persistence flow. |
+| Agent tool aborted via `AbortSignal` mid-pick | Helper dispatches `shuvgeist-element-cancel` to the page and rejects with `ElementPickCancelled`; the agent tool surface re-throws as before. |
 
 ---
 
@@ -244,7 +334,7 @@ No other files change. No manifest edit. No background/bridge changes.
 
 Not included in this plan's scope, but designed-for:
 
-- **React fiber detection**: inject a second userScript that walks `__reactFiber$*` keys on the selected element, extracts `type.name` and `_debugSource`. Add `reactComponent` and `sourceFile` fields to `ElementInfo`. Include them in the serialized JSON payload when present. Requires React dev build to preserve source info; degrades gracefully when absent.
+- **React fiber detection**: inject a second userScript that walks `__reactFiber$*` keys on the selected element, extracts `type.name` and `_debugSource`. Add `reactComponent` and `sourceFile` fields to `ElementInfo`. Include them in the serialized JSON payload when present. Requires a React dev build to preserve source info; degrades gracefully when absent.
 - **Element screenshot thumbnail**: after pick, use the existing CDP debugger (`src/tools/helpers/debugger-manager.ts`) to call `Page.captureScreenshot` with a clip matching `boundingBox`. Populate `Attachment.preview` so the tile shows the element image instead of the generic document icon.
 - **Keyboard shortcut**: add `commands` entry in `manifest.chrome.json` (e.g. `Ctrl+Shift+E` / `Cmd+Shift+E`); handler in `background.ts` relays to sidepanel via port message; sidepanel triggers the same click handler.
 - **Multi-element mode**: hold Shift while clicking to stay in picker mode and accumulate multiple elements before dismissing.

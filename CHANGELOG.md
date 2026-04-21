@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- Sidepanel header now has an "Inspect element" (crosshair) button next to Settings. Clicking it injects the existing element-picker overlay into the active tab; the selected element is staged as a document attachment in the composer (selector, xpath, tagName, text, boundingBox, attributes, pruned computed styles, parent chain, outerHTML, page url/title) and sent along with the next user message. Escape or the in-page Cancel button dismisses silently. Protected URLs (`chrome://`, `chrome-extension://`, `moz-extension://`, `about:`) and the existing `maxFiles` limit are respected.
+
+### Changed
+
+- Extracted the element-picker overlay out of `ask-user-which-element.ts` into a shared `src/tools/helpers/element-picker.ts` helper (`pickElement(tabId, { message, signal })`, `ElementPickCancelled`). The agent tool now delegates to the helper with identical behavior, output text, and abort semantics. Overlay truncation limits inside `getElementInfo` were raised (text 500→1000, html 1000→4000 with a `<!-- [truncated] -->` marker) so the sidepanel inspect flow carries enough context.
+
 ## [1.1.7] - 2026-04-20
 
 ### Changed

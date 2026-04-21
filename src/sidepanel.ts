@@ -20,7 +20,7 @@ import {
 	setShowJsonMode,
 } from "@mariozechner/pi-web-ui";
 import { html, render } from "lit";
-import { History, Plus, Settings } from "lucide";
+import { Crosshair, History, Plus, Settings } from "lucide";
 import { BrowserCommandExecutor } from "./bridge/browser-command-executor.js";
 import {
 	BRIDGE_STATE_KEY,
@@ -50,6 +50,7 @@ import {
 	type SessionSnapshot,
 	summarizeForBridge,
 } from "./bridge/session-bridge.js";
+import { Toast } from "./components/Toast.js";
 import { AboutTab } from "./dialogs/AboutTab.js";
 import { ApiKeyOrOAuthDialog } from "./dialogs/ApiKeyOrOAuthDialog.js";
 import { ApiKeysOAuthTab } from "./dialogs/ApiKeysOAuthTab.js";
@@ -77,6 +78,9 @@ import { registerAskUserWhichElementRenderer } from "./tools/ask-user-which-elem
 import { DebuggerTool } from "./tools/debugger.js";
 import { ExtractImageTool } from "./tools/extract-image.js";
 import { registerExtractImageRenderer } from "./tools/extract-image-renderer.js";
+import { isProtectedTabUrl, resolveTabTarget } from "./tools/helpers/browser-target.js";
+import { elementToAttachment } from "./tools/helpers/element-attachment.js";
+import { ElementPickCancelled, pickElement } from "./tools/helpers/element-picker.js";
 import { AskUserWhichElementTool, skillTool } from "./tools/index.js";
 import { NativeInputEventsRuntimeProvider } from "./tools/NativeInputEventsRuntimeProvider.js";
 import { isToolNavigating, NavigateTool } from "./tools/navigate.js";
@@ -1302,6 +1306,52 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 	}
 };
 
+const onInspectElementClick = async () => {
+	if (!chatPanel?.agentInterface) {
+		Toast.show("Chat is not ready yet", "error");
+		return;
+	}
+
+	let resolved: Awaited<ReturnType<typeof resolveTabTarget>>;
+	try {
+		resolved = await resolveTabTarget({ windowId: currentWindowId });
+	} catch (err) {
+		Toast.show((err as Error).message || "No active tab", "error");
+		return;
+	}
+	const { tab, tabId } = resolved;
+
+	if (isProtectedTabUrl(tab.url)) {
+		Toast.show("Can't inspect this page", "error");
+		return;
+	}
+
+	const editor = chatPanel.agentInterface.querySelector("message-editor") as
+		| (HTMLElement & { attachments: any[]; maxFiles: number })
+		| null;
+	if (!editor) {
+		Toast.show("Composer not ready", "error");
+		return;
+	}
+	if (editor.attachments.length >= editor.maxFiles) {
+		Toast.show(`Max ${editor.maxFiles} attachments reached`, "error");
+		return;
+	}
+
+	const toast = Toast.show("Click an element in the page to attach it", "info", 30000);
+	try {
+		const info = await pickElement(tabId);
+		const att = elementToAttachment(info, { url: tab.url || "", title: tab.title });
+		editor.attachments = [...editor.attachments, att];
+	} catch (err) {
+		if (!(err instanceof ElementPickCancelled)) {
+			Toast.show((err as Error).message || "Inspect failed", "error");
+		}
+	} finally {
+		toast.remove();
+	}
+};
+
 const loadSession = (sessionId: string) => {
 	// Navigation will disconnect port and auto-release locks
 	const url = new URL(window.location.href);
@@ -1421,6 +1471,13 @@ const renderApp = () => {
 										? html`<span class="w-2 h-2 rounded-full bg-gray-500" title="Bridge disconnected"></span>`
 										: html``
 					}
+					${Button({
+						variant: "ghost",
+						size: "sm",
+						children: icon(Crosshair, "sm"),
+						onClick: onInspectElementClick,
+						title: "Inspect element",
+					})}
 					${Button({
 						variant: "ghost",
 						size: "sm",
