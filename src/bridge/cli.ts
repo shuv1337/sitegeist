@@ -678,6 +678,73 @@ async function isBridgeRunning(statusUrl: string): Promise<boolean> {
 	}
 }
 
+/**
+ * How long to wait for the browser extension to (re)connect to the bridge
+ * after the server has come up. The extension-side BridgeClient uses
+ * exponential backoff capped at 15 seconds plus a keepalive alarm nudge, so
+ * 30 seconds comfortably covers the worst case where the extension just hit
+ * its backoff ceiling right before the bridge process came back up. Most
+ * warm paths connect in well under 2 seconds.
+ */
+const EXTENSION_CONNECT_WAIT_MS = 30_000;
+
+/**
+ * After this long without the extension connecting, print a single stderr
+ * hint so the user knows we are still waiting (instead of silently hanging).
+ */
+const EXTENSION_CONNECT_HINT_MS = 1_500;
+
+async function fetchStatusSnapshot(statusUrl: string): Promise<BridgeServerStatus | null> {
+	try {
+		const controller = new AbortController();
+		const timeout = setTimeout(() => controller.abort(), 3000);
+		const response = await fetch(statusUrl, { signal: controller.signal });
+		clearTimeout(timeout);
+		if (!response.ok) return null;
+		return (await response.json()) as BridgeServerStatus;
+	} catch {
+		return null;
+	}
+}
+
+/**
+ * Poll the bridge's /status endpoint until the extension has registered, or
+ * the timeout elapses. Returns `true` when the extension is connected.
+ *
+ * Called after ensureBridgeServer() so that even cold-start commands like
+ * `shuvgeist status` reflect the live extension state instead of reporting
+ * "not connected" during the normal extension reconnect window.
+ */
+async function waitForExtensionConnection(
+	statusUrl: string,
+	timeoutMs: number,
+	options: { silent?: boolean } = {},
+): Promise<boolean> {
+	const startedAt = Date.now();
+	let hintPrinted = false;
+	let delay = 100;
+	while (true) {
+		const status = await fetchStatusSnapshot(statusUrl);
+		if (status?.extension.connected) return true;
+
+		const elapsed = Date.now() - startedAt;
+		if (elapsed >= timeoutMs) return false;
+
+		if (!hintPrinted && !options.silent && elapsed >= EXTENSION_CONNECT_HINT_MS) {
+			process.stderr.write("Waiting for Shuvgeist extension to connect...\n");
+			hintPrinted = true;
+		}
+
+		const remaining = timeoutMs - elapsed;
+		const sleepMs = Math.min(delay, remaining);
+		if (sleepMs <= 0) return false;
+		await new Promise((resolve) => {
+			setTimeout(resolve, sleepMs);
+		});
+		delay = Math.min(delay * 2, 500);
+	}
+}
+
 async function cmdLaunch(
 	options: LaunchOptions,
 	flags: { url?: string; host?: string; port?: string; token?: string; json?: boolean },
@@ -933,9 +1000,29 @@ async function main(): Promise<void> {
 	// Auto-start bridge for commands that need it. For the `launch` command,
 	// `flags.url` is the URL to open in the launched browser (not the bridge
 	// URL), so strip it before passing to the bridge server helpers.
+	//
+	// After the bridge process is up, also wait for the browser extension to
+	// (re)register. This makes even cold-start commands like `shuvgeist status`
+	// reflect the live extension state instead of returning immediately during
+	// the brief window where the bridge is listening but the extension-side
+	// reconnect has not fired yet.
+	//
+	// `launch` has its own extension-registration wait inside launchBrowser()
+	// and `close` is a local browser-lifecycle operation, so both skip the
+	// extra wait here. JSON callers still get a single-shot view: the wait is
+	// silent and bounded, and commands that do not require an extension target
+	// (e.g. a disconnected `status --json`) still complete after the timeout.
 	if (plan.kind !== "serve" && plan.kind !== "usage-error") {
 		const bridgeFlags = plan.kind === "launch" ? { host: flags.host, port: flags.port, token: flags.token } : flags;
 		await ensureBridgeServer(bridgeFlags);
+
+		if (plan.kind !== "launch" && plan.kind !== "close") {
+			const wsUrl = resolveBridgeUrl(bridgeFlags, process.env, readConfigFile());
+			const statusUrl = bridgeStatusUrl(wsUrl);
+			await waitForExtensionConnection(statusUrl, EXTENSION_CONNECT_WAIT_MS, {
+				silent: flags.json === true,
+			});
+		}
 	}
 
 	switch (plan.kind) {

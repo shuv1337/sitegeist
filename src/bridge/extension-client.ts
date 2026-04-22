@@ -36,7 +36,13 @@ export class BridgeClient {
 	private executor: CommandDispatcher | null = null;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	private reconnectAttempts = 0;
-	private readonly maxReconnectDelay = 30_000;
+	/**
+	 * Cap on the exponential backoff between reconnect attempts. 15 seconds is
+	 * short enough that a CLI invocation (which waits up to 30s) almost always
+	 * observes the extension reconnecting, but long enough that a perpetually
+	 * unreachable bridge does not spam the network.
+	 */
+	private readonly maxReconnectDelay = 15_000;
 	private enabled = false;
 
 	/** Active abort controllers keyed by request id, so we can cancel on `abort` messages. */
@@ -79,6 +85,28 @@ export class BridgeClient {
 		this.closeAndDetachWebSocket();
 		this.pendingAborts.clear();
 		this.setState("disabled");
+	}
+
+	/**
+	 * Force an immediate reconnect attempt, bypassing any in-flight exponential
+	 * backoff. Used by the background keepalive alarm so that when the bridge
+	 * server comes back up the extension does not have to wait out a long
+	 * backoff window (up to `maxReconnectDelay`) before trying again.
+	 *
+	 * Safe to call when the client is connected or connecting: a live,
+	 * already-registered connection is left alone; only `disconnected` and
+	 * `error` states trigger an immediate retry.
+	 */
+	nudgeReconnect(): void {
+		if (!this.enabled || !this.options) return;
+		if (this.state !== "disconnected" && this.state !== "error") return;
+
+		if (this.reconnectTimer) {
+			clearTimeout(this.reconnectTimer);
+			this.reconnectTimer = null;
+		}
+		this.reconnectAttempts = 0;
+		this.doConnect();
 	}
 
 	/** Send an event to the bridge server (e.g. active_tab_changed). */

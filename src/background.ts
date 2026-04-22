@@ -497,7 +497,15 @@ chrome.alarms.create("bridge-keepalive", { periodInMinutes: 1 });
 
 chrome.alarms.onAlarm.addListener((alarm) => {
 	if (alarm.name === "bridge-keepalive") {
-		void ensureBridgeConnection();
+		void ensureBridgeConnection().then(() => {
+			// If the client settled into a disconnected/error state (bridge
+			// server was down, extension backoff hit its cap, ...), bypass the
+			// in-flight exponential backoff and retry now. Without this, the
+			// extension can sit in a long wait even after the bridge has come
+			// back up, which makes cold-start CLI commands look as if the
+			// extension is not connected.
+			bridgeClient.nudgeReconnect();
+		});
 	}
 });
 

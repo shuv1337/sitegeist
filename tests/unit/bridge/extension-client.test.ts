@@ -320,4 +320,51 @@ describe("BridgeClient", () => {
 			data: { tabId: 1 },
 		});
 	});
+
+	it("nudgeReconnect bypasses backoff when disconnected and is a no-op otherwise", async () => {
+		vi.useFakeTimers();
+		const client = new BridgeClient();
+
+		// Before connect(): no options, nudge is a no-op.
+		client.nudgeReconnect();
+		expect(FakeWebSocket.instances).toHaveLength(0);
+
+		client.connect({
+			url: "ws://127.0.0.1:19285/ws",
+			token: "secret",
+			windowId: 3,
+			sensitiveAccessEnabled: false,
+			executor: mockExecutor,
+		});
+		const initial = FakeWebSocket.instances.at(-1)!;
+		expect(client.connectionState).toBe("connecting");
+
+		// While still connecting, nudge is a no-op (do not tear down the
+		// pending socket or start a second live connection).
+		client.nudgeReconnect();
+		expect(FakeWebSocket.instances).toHaveLength(1);
+
+		initial.emitOpen();
+		initial.emitMessage({ type: "register_result", ok: true });
+		expect(client.connectionState).toBe("connected");
+
+		// While connected, nudge is also a no-op — an already-registered link
+		// must not be interrupted.
+		client.nudgeReconnect();
+		expect(FakeWebSocket.instances).toHaveLength(1);
+
+		// Simulate the bridge going away. Extension schedules a backoff
+		// reconnect — without nudgeReconnect the client would sleep up to 15s
+		// before the next attempt.
+		initial.emitClose();
+		expect(client.connectionState).toBe("disconnected");
+
+		const beforeNudge = FakeWebSocket.instances.length;
+		client.nudgeReconnect();
+		expect(FakeWebSocket.instances.length).toBe(beforeNudge + 1);
+		expect(client.connectionState).toBe("connecting");
+
+		client.disconnect();
+		vi.useRealTimers();
+	});
 });

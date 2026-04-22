@@ -2,6 +2,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- CLI now waits for the Shuvgeist browser extension to register before running any command (including `shuvgeist status`), so a cold-start invocation reports the live extension state instead of racing the extension's reconnect window. The wait is bounded at 30 seconds, prints a single "Waiting for Shuvgeist extension to connect..." hint to stderr after 1.5 seconds, stays silent in `--json` mode, and applies to every command except `serve`, `launch` (which has its own handshake), `close`, and usage errors.
+
+### Fixed
+
+- Extension-side bridge reconnect no longer leaves cold-start CLI commands looking as if the extension is disconnected. The exponential backoff cap was lowered from 30s to 15s, and the 1-minute keepalive alarm now nudges an immediate reconnect when the client is in `disconnected` or `error` state via a new `BridgeClient.nudgeReconnect()` method, so a freshly-started bridge is discovered well inside the CLI's wait window.
+
 ## [1.1.8] - 2026-04-21
 
 ### Added
