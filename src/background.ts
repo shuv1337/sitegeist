@@ -392,12 +392,15 @@ async function openTtsOverlay(windowId?: number): Promise<TtsRuntimeResponse> {
 	};
 }
 
-async function handleTtsRuntimeMessage(message: TtsRuntimeMessage): Promise<TtsRuntimeResponse> {
+async function handleTtsRuntimeMessage(
+	message: TtsRuntimeMessage,
+	sender?: chrome.runtime.MessageSender,
+): Promise<TtsRuntimeResponse> {
 	switch (message.type) {
 		case "tts-open-overlay":
 			return openTtsOverlay(message.windowId);
 		case "tts-close-overlay":
-			await closeTtsOverlay(message.tabId);
+			await closeTtsOverlay(message.tabId ?? sender?.tab?.id ?? ttsOverlayTabId ?? undefined);
 			return getTtsStateResponse();
 		case "tts-get-state":
 			return getTtsStateResponse();
@@ -484,7 +487,10 @@ async function handleTtsRuntimeMessage(message: TtsRuntimeMessage): Promise<TtsR
 	};
 }
 
-async function handleTtsOverlayMessage(message: TtsOverlayMessage): Promise<TtsRuntimeResponse> {
+async function handleTtsOverlayMessage(
+	message: TtsOverlayMessage,
+	sender?: chrome.runtime.MessageSender,
+): Promise<TtsRuntimeResponse> {
 	if (message.type === "tts-overlay-ready") {
 		await syncTtsOverlay();
 		return getTtsStateResponse();
@@ -498,15 +504,15 @@ async function handleTtsOverlayMessage(message: TtsOverlayMessage): Promise<TtsR
 		case "resume":
 			return handleTtsRuntimeMessage({ type: "tts-resume" });
 		case "stop":
-			return handleTtsRuntimeMessage({ type: "tts-stop" });
+			return handleTtsRuntimeMessage({ type: "tts-stop" }, sender);
 		case "close":
-			return handleTtsRuntimeMessage({ type: "tts-close-overlay" });
+			return handleTtsRuntimeMessage({ type: "tts-close-overlay" }, sender);
 		case "set-click-mode":
-			return handleTtsRuntimeMessage({ type: "tts-set-click-mode", armed: message.command.armed });
+			return handleTtsRuntimeMessage({ type: "tts-set-click-mode", armed: message.command.armed }, sender);
 		case "set-provider":
-			return handleTtsRuntimeMessage({ type: "tts-set-provider", provider: message.command.provider });
+			return handleTtsRuntimeMessage({ type: "tts-set-provider", provider: message.command.provider }, sender);
 		case "set-voice":
-			return handleTtsRuntimeMessage({ type: "tts-set-voice", voiceId: message.command.voiceId });
+			return handleTtsRuntimeMessage({ type: "tts-set-voice", voiceId: message.command.voiceId }, sender);
 	}
 
 	return {
@@ -1025,7 +1031,7 @@ if (chrome.runtime.onUserScriptMessage) {
 			typeof (message as { type?: unknown }).type === "string" &&
 			(message as { type: string }).type.startsWith("tts-")
 		) {
-			void handleTtsOverlayMessage(message as TtsOverlayMessage)
+			void handleTtsOverlayMessage(message as TtsOverlayMessage, sender)
 				.then((response) => sendResponse(response))
 				.catch((error: unknown) =>
 					sendResponse({
@@ -1060,7 +1066,7 @@ chrome.runtime.onMessage.addListener(
 		sendResponse: (response: unknown) => void,
 	) => {
 		if (message.type === "tts-overlay-command" || message.type === "tts-overlay-ready") {
-			void handleTtsOverlayMessage(message as unknown as TtsOverlayMessage)
+			void handleTtsOverlayMessage(message as unknown as TtsOverlayMessage, _sender)
 				.then((response) => sendResponse(response))
 				.catch((error: unknown) =>
 					sendResponse({
@@ -1072,7 +1078,7 @@ chrome.runtime.onMessage.addListener(
 		}
 
 		if (typeof message.type === "string" && message.type.startsWith("tts-")) {
-			void handleTtsRuntimeMessage(message as TtsRuntimeMessage)
+			void handleTtsRuntimeMessage(message as TtsRuntimeMessage, _sender)
 				.then((response) => sendResponse(response))
 				.catch((error: unknown) =>
 					sendResponse({

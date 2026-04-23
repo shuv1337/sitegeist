@@ -78,6 +78,15 @@ const OVERLAY_CSS = `
 	border-radius: 10px;
 	padding: 8px 10px;
 }
+#shuvgeist-tts-overlay .sg-tts-select {
+	color-scheme: dark;
+	background-color: #1f1f1f;
+	color: #f3f4f6;
+}
+#shuvgeist-tts-overlay .sg-tts-select option {
+	background-color: #1f1f1f;
+	color: #f3f4f6;
+}
 #shuvgeist-tts-overlay .sg-tts-status {
 	display: flex;
 	align-items: center;
