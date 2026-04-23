@@ -1,54 +1,133 @@
 ---
 name: shuvgeist
-description: "Control Chrome/Edge through the Shuvgeist CLI bridge. Use when the user wants browser automation, page inspection, workflow execution, screenshots, semantic element targeting, frame inspection, network capture, device emulation, performance tracing, or debugger-backed access from the terminal."
+description: "Control Chrome/Edge through the Shuvgeist extension and CLI bridge. Use whenever the user needs real browser automation, authenticated page access, page-context JavaScript, semantic element targeting, workflows, screenshots, network inspection, device emulation, performance tracing, or sidepanel session/artifact control from the terminal. Prefer this as the default browser skill."
 ---
 
-# Shuvgeist Browser Automation
+# Shuvgeist
 
-Control a Chrome/Edge browser through the Shuvgeist extension sidepanel using the `shuvgeist` CLI.
+Shuvgeist is both:
+
+1. a Chrome/Edge sidepanel AI assistant
+2. a CLI bridge for terminal-driven browser control
+
+Use this skill whenever the task needs a real browser instead of plain HTTP requests or static scraping.
 
 ## When to use this skill
 
-Use Shuvgeist when a task needs a real browser that the user already has open, especially when you need to:
+Use Shuvgeist for browser tasks such as:
 
-- navigate and switch tabs
-- run JavaScript in page context
-- capture screenshots
-- inspect iframes
-- generate semantic page snapshots
-- locate elements by role, text, or label
-- reuse stable ref IDs across follow-up actions
-- run multi-step browser workflows
-- inspect network traffic and export curl commands
-- emulate devices or custom viewports
-- collect performance metrics or traces
-- access MAIN-world state or cookies via DevTools Protocol
+- navigating real pages in Chrome/Edge
+- working inside the user's already-authenticated browser state
+- opening or launching a browser when no suitable session exists yet
+- taking screenshots or inspecting the visible page
+- running JavaScript in page context with `browserjs()`
+- accessing MAIN-world state or cookies through debugger-backed commands
+- locating elements semantically instead of guessing brittle CSS selectors
+- working across tabs and iframes
+- running deterministic multi-step workflows
+- capturing network requests and exporting curl reproductions
+- emulating mobile devices or custom viewport/user-agent settings
+- collecting performance metrics or traces
+- interacting with the live sidepanel chat session from the terminal
+- listing or retrieving Shuvgeist-generated artifacts
 
-Prefer this skill over raw HTTP scraping when the site depends on browser state, auth, client-side rendering, or user-visible interaction.
+Prefer this skill when the user mentions browser automation, using their logged-in browser, inspecting what is on screen, driving a real webpage, debugging client-side behavior, reproducing an authenticated flow, or coordinating with the Shuvgeist sidepanel session.
 
-## Prerequisites
+## Mental model
 
-The bridge requires three components:
+Shuvgeist has two layers:
 
-1. Extension: Shuvgeist loaded in Chrome/Edge with the sidepanel open
-2. Bridge server: `shuvgeist serve`
-3. CLI: `shuvgeist` commands from the terminal
+- **Extension layer:** the browser sidepanel assistant, local skills, artifacts, provider/model selection, session history, inspect-element UI, and other browser-native features
+- **CLI bridge layer:** terminal commands that talk to the extension background worker and active tab
 
-The token is stored in `~/.shuvgeist/bridge.json`. The extension must have the bridge enabled in `Settings > Bridge` with a matching token.
+Important operational facts:
 
-If `shuvgeist status` returns exit code `2`, the extension sidepanel is not connected and the user needs to open it.
+- The CLI can auto-start the local bridge when needed.
+- Most browser commands work even when the sidepanel is closed.
+- REPL execution can run with the sidepanel closed through the offscreen runtime.
+- **Session commands** such as `session`, `inject`, `new-session`, `set-model`, and `artifacts` depend on the sidepanel session surface.
+- Sensitive commands are gated by Bridge settings.
 
-## First step
+## First command
 
-Always verify bridge connectivity before issuing browser commands:
+Start with structured status:
+
+```bash
+shuvgeist status --json
+```
+
+Use this to confirm:
+
+- extension connectivity
+- current capabilities
+- target window/tab state
+- whether a sidepanel session is available
+
+If you only need a quick human-readable check:
 
 ```bash
 shuvgeist status
 ```
 
+## Prerequisites
+
+### Required
+
+- Shuvgeist extension installed or built and loaded in Chrome/Edge
+- A browser target connected to the extension
+
+### Usually not required manually
+
+You normally **do not** need to start the bridge yourself. The CLI can auto-start it when a command needs it.
+
+Manual bridge startup is mainly for debugging bridge/server behavior:
+
+```bash
+shuvgeist serve
+```
+
+### If no browser is open yet
+
+Shuvgeist can launch one for you:
+
+```bash
+shuvgeist launch
+shuvgeist launch --url https://example.com
+shuvgeist launch --headless
+```
+
+Close a CLI-launched browser with:
+
+```bash
+shuvgeist close
+```
+
+### Config resolution
+
+Bridge config is resolved in this order:
+
+1. CLI flags: `--token`, `--url`, `--host`, `--port`
+2. Environment: `SHUVGEIST_BRIDGE_TOKEN`, `SHUVGEIST_BRIDGE_URL`, `SHUVGEIST_BRIDGE_HOST`, `SHUVGEIST_BRIDGE_PORT`
+3. Config file: `~/.shuvgeist/bridge.json`
+
+Browser and extension discovery for `launch` can also come from flags, env, config, local dev paths, or installed browser locations.
+
 ## Core command surface
 
-### Navigate and tabs
+### Browser lifecycle
+
+```bash
+shuvgeist launch
+shuvgeist launch --url https://example.com --foreground
+shuvgeist launch --headless
+shuvgeist close
+shuvgeist status --json
+```
+
+Use `launch` when the user does not already have a suitable browser session open.
+Use the existing browser session when the user specifically wants their current authenticated tabs, extensions, or state.
+
+### Navigation and tab control
 
 ```bash
 shuvgeist navigate "https://example.com"
@@ -57,9 +136,9 @@ shuvgeist tabs --json
 shuvgeist switch <tabId>
 ```
 
-Use `tabs --json` when you need stable `tabId` values for later `--tab-id` targeting.
+Use `tabs --json` to capture stable `tabId` values for later `--tab-id` targeting.
 
-### Screenshot
+### Screenshots
 
 ```bash
 shuvgeist screenshot --out /tmp/page.webp
@@ -67,11 +146,11 @@ shuvgeist screenshot --json
 shuvgeist screenshot --out /tmp/page.webp --max-width 800
 ```
 
-Screenshots are token-efficient WebP output. Use `--json` when another tool needs the base64 data URL.
+Prefer `--json` when another tool needs inline image data. Prefer `--out` when you want a file artifact.
 
-### REPL and page JavaScript
+### REPL and page-context JavaScript
 
-The REPL runs in an extension sandbox. Use `browserjs()` to execute code in the actual page context.
+The REPL runs in a sandbox. Use `browserjs()` to execute in the actual page context.
 
 ```bash
 shuvgeist repl 'return await browserjs(() => document.title)'
@@ -86,29 +165,43 @@ shuvgeist repl -f scrape.js --write-files ./output
 Important:
 
 - Code outside `browserjs()` runs in the sandbox, not the page.
-- Code inside `browserjs()` runs in the page's user-script world.
-- Use the REPL for deterministic DOM reads/writes when CSS selectors are already known.
+- Code inside `browserjs()` runs in the browser script world against the live DOM.
+- Matching Shuvgeist site skills may be auto-injected into `browserjs()` runs for supported domains.
+- REPL is available even with the sidepanel closed.
+
+### Native trusted input from the REPL
+
+When synthetic DOM events are insufficient, use debugger-backed native input helpers from the REPL runtime:
+
+```bash
+shuvgeist repl 'await nativeClick("button[type=submit]"); return "clicked"'
+shuvgeist repl 'await nativeType("input[type=email]", "user@example.com"); return "typed"'
+shuvgeist repl 'await nativePress("Enter"); return "submitted"'
+```
+
+Use these for sites that reject ordinary scripted DOM events.
 
 ### MAIN-world eval
 
-Requires sensitive browser data access enabled in Bridge settings.
+Requires sensitive browser access enabled in Bridge settings.
 
 ```bash
 shuvgeist eval "document.title"
 shuvgeist eval "window.__APP_STATE__" --tab-id 123
 ```
 
-Use this when `browserjs()` cannot see page-owned globals, framework state, or MAIN-world values.
+Use this when data lives in the page's real JS world and is not visible to `browserjs()`.
 
 ### Cookies
 
-Requires sensitive browser data access enabled in Bridge settings.
+Requires sensitive browser access enabled in Bridge settings.
 
 ```bash
 shuvgeist cookies
+shuvgeist cookies --json
 ```
 
-This reads current-site cookies, including HttpOnly cookies.
+This can expose current-site cookies, including HttpOnly cookies.
 
 ### Interactive element picking
 
@@ -116,13 +209,13 @@ This reads current-site cookies, including HttpOnly cookies.
 shuvgeist select "Click the login button"
 ```
 
-This waits for user interaction and has no timeout by default unless you pass `--timeout`.
+Use this when a human can disambiguate the target faster than the model can.
 
-## New deterministic automation surface
+## Deterministic automation surface
 
-### Workflow run and validate
+### Workflows
 
-Use workflows when you want one bounded bridge request to run a multi-step browser flow.
+Use workflows when you want one bounded bridge request to own a multi-step browser flow.
 
 ```bash
 shuvgeist workflow validate --file workflow.json
@@ -131,38 +224,32 @@ shuvgeist workflow run --file workflow.json --arg query=shoes --arg urls='["http
 shuvgeist workflow run --file workflow.json --dry-run
 ```
 
-Workflow model:
+Workflow model highlights:
 
 - `steps` execute sequentially
 - `repeat` and `each` loops are supported
 - exact token substitution like `"%{urls}"` preserves type
 - interpolated strings like `"hello %{name}"` produce strings
-- `as` captures previous step results
-- `defaultWait` and per-step `wait` data are supported
-- disallowed inside workflows: `workflow_run`, `workflow_validate`, `select_element`
+- `as` captures prior results
+- `defaultWait` and per-step `wait` are supported
+- disallowed in workflows: nested workflow commands and interactive element selection
 
-Use workflow mode when extra round trips would be wasteful or brittle.
+Use workflows when repeated round trips would be brittle or wasteful.
 
 ### Page snapshots
 
-Use snapshots when you need a compact semantic representation of a page instead of hand-authored selectors.
+Use snapshots when you need a compact semantic representation of the current page.
 
 ```bash
 shuvgeist snapshot --json
 shuvgeist snapshot --tab-id 123 --frame-id 7 --max-entries 80 --json
 ```
 
-Snapshots return:
+Snapshots return semantic entries, candidate selectors, page metadata, and stable `snapshotId` values.
 
-- page URL and title
-- semantic entries for visible/interactive elements
-- candidate selectors
-- stable `snapshotId` values
-- frame-aware metadata
+### Semantic locate
 
-### Semantic locator lookup
-
-Use locators to find likely elements by meaning instead of CSS:
+Use locators when you know what an element means, not what selector it has.
 
 ```bash
 shuvgeist locate role button --name "Sign in" --json
@@ -170,16 +257,11 @@ shuvgeist locate text "Add to cart" --json
 shuvgeist locate label "Email address" --json
 ```
 
-Locator results include:
-
-- ranked matches
-- match reasons and scores
-- `refId` values for follow-up actions
-- the matched snapshot entry
+Locator results include ranked matches, scores, reasons, and `refId` values.
 
 ### Ref actions
 
-Ref IDs let you act on previously located elements without repeating the semantic search every time.
+Operate on prior semantic matches without repeating the search:
 
 ```bash
 shuvgeist ref click <refId>
@@ -191,32 +273,22 @@ Ref caveats:
 - refs are scoped to `tabId + frameId`
 - refs are in-memory only
 - navigation invalidates refs
-- stale or ambiguous refs should fail explicitly instead of acting on weak matches
+- stale or ambiguous refs should fail instead of guessing
 
 ### Frame inspection
 
-Use frame commands before targeting iframe content:
+Inspect iframe structure before operating inside it:
 
 ```bash
 shuvgeist frame list --json
 shuvgeist frame tree --json
 ```
 
-Then pass `--frame-id` to supported commands such as:
+Then pass `--frame-id` to supported commands such as `snapshot`, `locate`, `ref`, `eval`, `network`, `device`, and `perf`.
 
-- `snapshot`
-- `locate`
-- `ref click`
-- `ref fill`
-- `eval`
-
-Also pass `--tab-id` when the active tab is not the one you want.
-
-## Observability and power-user surface
+## Diagnostics and observability
 
 ### Network capture
-
-Use network capture when you need request metadata, response bodies, or curl reproduction:
 
 ```bash
 shuvgeist network start
@@ -232,23 +304,20 @@ shuvgeist network stop
 
 Important:
 
-- capture is explicit and per tab
+- capture is explicit and bounded in memory
 - capture continues until `network stop`
-- storage is bounded and in-memory
-- curl export redacts sensitive headers by default
-- `network get`, `network body`, and `network curl` are sensitive bridge capabilities
+- `curl` redacts sensitive headers by default
+- `network get`, `network body`, and `network curl` are sensitive capabilities
 
 Typical pattern:
 
-1. `network start`
-2. trigger the page action with `navigate`, `repl`, `ref click`, or user interaction
-3. `network list --json`
+1. `shuvgeist network start`
+2. trigger the browser action
+3. `shuvgeist network list --json`
 4. inspect or export the interesting request
-5. `network stop`
+5. `shuvgeist network stop`
 
 ### Device emulation
-
-Use device emulation to test responsive behavior or mobile-only flows:
 
 ```bash
 shuvgeist device emulate --preset iphone-14-pro --json
@@ -256,11 +325,9 @@ shuvgeist device emulate --width 390 --height 844 --dpr 3 --mobile --touch --use
 shuvgeist device reset
 ```
 
-This is sticky per tab until reset.
+Use this for responsive bugs, mobile-only flows, touch behavior, or user-agent-sensitive pages.
 
-### Performance metrics and trace capture
-
-Use perf commands when you need timing data or a bounded trace:
+### Performance tools
 
 ```bash
 shuvgeist perf metrics --json
@@ -268,18 +335,65 @@ shuvgeist perf trace-start --auto-stop 10000 --json
 shuvgeist perf trace-stop --json
 ```
 
-Use `perf metrics` for fast one-shot data. Use trace capture for heavier debugging where raw events matter more than a quick summary.
+Use `perf metrics` for quick timing data and `trace-start/trace-stop` for deeper investigations.
+
+## Sidepanel session control
+
+Shuvgeist is not only low-level browser automation. It can also collaborate with the live sidepanel assistant session.
+
+These commands are especially useful when you want to inspect or steer the extension's own AI conversation from the terminal.
+
+### Session history
+
+```bash
+shuvgeist session --json
+shuvgeist session --last 20 --json
+shuvgeist session --follow
+```
+
+Use this to inspect the active persisted sidepanel conversation, tail live updates, or correlate browser actions with the assistant's state.
+
+### Inject messages into the live session
+
+```bash
+shuvgeist inject "Summarize this page and save a CSV artifact"
+shuvgeist inject "Done. The file is in /tmp/output.csv" --role assistant
+```
+
+Use this to hand off findings between terminal automation and the sidepanel assistant.
+
+### Create or reconfigure sessions
+
+```bash
+shuvgeist new-session
+shuvgeist new-session provider/model-id --json
+shuvgeist set-model provider/model-id --json
+```
+
+Use these when you want the browser-native assistant to continue under a fresh session or different model.
+
+### Artifacts
+
+```bash
+shuvgeist artifacts --json
+```
+
+Use this to list artifacts created in the active sidepanel session.
+
+### Session limitations
+
+Session commands are the main place where sidepanel availability matters. If the sidepanel session surface is unavailable, these commands should be treated as unavailable rather than retried blindly.
 
 ## Targeting flags
 
-Most bridge commands now support explicit target routing:
+Prefer explicit routing when multiple tabs or frames are in play:
 
 ```bash
 --tab-id <id>
 --frame-id <id>
 ```
 
-Use them for:
+Use them with:
 
 - `eval`
 - `snapshot`
@@ -292,11 +406,11 @@ Use them for:
 - `device ...`
 - `perf ...`
 
-Do not assume the OS-focused Chrome window is the correct target. Prefer explicit IDs when working across multiple tabs or frames.
+Do not assume the currently focused browser window is the intended target.
 
-## JSON output
+## JSON mode
 
-Prefer `--json` whenever the output will feed another tool or a follow-up programmatic step:
+Prefer `--json` whenever output will feed follow-up commands or another tool:
 
 ```bash
 shuvgeist status --json
@@ -305,11 +419,13 @@ shuvgeist snapshot --json
 shuvgeist locate role button --name "Checkout" --json
 shuvgeist network list --json
 shuvgeist perf metrics --json
+shuvgeist session --json
+shuvgeist artifacts --json
 ```
 
 ## Timeouts
 
-Override timeouts on long-running operations:
+Override defaults on slow or long-running operations:
 
 ```bash
 shuvgeist workflow run --file workflow.json --timeout 10m
@@ -324,16 +440,8 @@ shuvgeist perf trace-start --timeout 2m
 |------|---------|--------|
 | 0 | Success | Continue |
 | 1 | Command/runtime error | Inspect the returned error |
-| 2 | No extension connected | User needs to open the sidepanel |
-| 3 | Auth/configuration/network error | Check token, URL, or server status |
-
-## Configuration
-
-Config is resolved in this order:
-
-1. CLI flags: `--token`, `--url`, `--host`, `--port`
-2. Environment: `SHUVGEIST_BRIDGE_TOKEN`, `SHUVGEIST_BRIDGE_URL`, `SHUVGEIST_BRIDGE_HOST`, `SHUVGEIST_BRIDGE_PORT`
-3. Config file: `~/.shuvgeist/bridge.json`
+| 2 | No extension target connected | Connect or launch a browser target |
+| 3 | Auth/configuration/network error | Check token, URL, local bridge config, or discovery |
 
 ## Recommended operating patterns
 
@@ -345,7 +453,7 @@ shuvgeist locate role button --name "Sign in" --json
 shuvgeist ref click <refId>
 ```
 
-Use this instead of guessing CSS selectors when page structure is unstable.
+Use this instead of guessing selectors on unstable pages.
 
 ### Frame-aware interaction
 
@@ -356,7 +464,7 @@ shuvgeist locate label "Search" --frame-id 12 --json
 shuvgeist ref fill <refId> --value "query" --frame-id 12
 ```
 
-### Capture API traffic around a user flow
+### Capture authenticated API traffic
 
 ```bash
 shuvgeist network start
@@ -366,13 +474,11 @@ shuvgeist network curl <requestId> --json
 shuvgeist network stop
 ```
 
-### Workflow-driven scraping
+### Workflow-driven automation
 
 ```bash
 shuvgeist workflow run --file workflow.json --arg category=boots --json
 ```
-
-Use this when the flow is deterministic and you want one bridge request to own the whole run.
 
 ### Responsive reproduction
 
@@ -383,22 +489,27 @@ shuvgeist screenshot --out /tmp/mobile.webp
 shuvgeist device reset
 ```
 
-### Performance debugging
+### Sidepanel handoff loop
 
 ```bash
-shuvgeist perf metrics --json
-shuvgeist perf trace-start --auto-stop 15000
-# reproduce the issue
-shuvgeist perf trace-stop --json
+shuvgeist session --json
+shuvgeist inject "I captured the pricing table. Please turn it into an artifact."
+shuvgeist artifacts --json
 ```
+
+Use this when terminal automation and the sidepanel assistant should collaborate instead of duplicating work.
 
 ## Decision rules
 
-- Use `repl` when you already know the DOM operations you need.
-- Use `eval` when the data only exists in MAIN world.
-- Use `snapshot` + `locate` + `ref` when selectors are unknown or likely fragile.
-- Use `frame list/tree` before touching iframe content.
+- Use `launch` when no suitable browser session exists yet.
+- Use `navigate` / `tabs` / `switch` for straightforward browser movement.
+- Use `repl` when you know the DOM operations or need custom page logic.
+- Use REPL native input helpers when sites reject synthetic DOM events.
+- Use `eval` when the needed data only exists in MAIN world.
+- Use `snapshot` + `locate` + `ref` when selectors are unknown, fragile, or dynamic.
+- Use `frame list/tree` before touching iframe-heavy pages.
 - Use `workflow` when multiple deterministic steps should happen in one request.
-- Use `network` when the browser request/response layer matters more than the rendered DOM.
-- Use `device` when layout or behavior depends on viewport/touch/user-agent.
-- Use `perf` when timing or trace data matters.
+- Use `network` when request/response behavior matters more than rendered DOM.
+- Use `device` when layout or behavior depends on viewport, touch, or user agent.
+- Use `perf` when timing, runtime metrics, or traces matter.
+- Use `session` / `inject` / `artifacts` when you need to collaborate with the Shuvgeist sidepanel assistant, not just automate the page.
