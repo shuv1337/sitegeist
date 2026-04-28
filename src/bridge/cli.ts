@@ -864,12 +864,18 @@ async function cmdLaunch(
 					browserPath: result.browserPath,
 					extensionPath: result.extensionPath,
 					browserName: result.browserName,
+					userDataDir: result.userDataDir,
 				}),
 			);
 		} else {
 			console.log(`Launched ${result.browserName} (PID ${result.pid})`);
 			console.log(`  Browser: ${result.browserPath}`);
 			console.log(`  Extension: ${result.extensionPath}`);
+			if (result.userDataDir) {
+				console.log(`  Profile dir: ${result.userDataDir}`);
+			} else {
+				console.log("  Profile dir: (default profile, --use-default-profile)");
+			}
 		}
 
 		if (options.foreground) {
@@ -914,7 +920,9 @@ function printUsage(): void {
 
 Usage:
   shuvgeist serve [--host HOST] [--port PORT] [--token TOKEN]
-  shuvgeist launch [<url>] [--browser path] [--extension-path path] [--url url] [--headless] [--foreground] [--profile name]
+  shuvgeist launch [<url>] [--browser path] [--extension-path path] [--url url]
+                   [--headless] [--foreground] [--profile name]
+                   [--user-data-dir path] [--use-default-profile]
   shuvgeist close
   shuvgeist status [--json] [--timeout 10s]
   shuvgeist navigate <url> [--new-tab] [--json] [--timeout 60s]
@@ -968,6 +976,10 @@ Global options:
   --touch             Enable touch emulation
   --user-agent <ua>   Override user agent
   --auto-stop <ms>    Perf trace auto-stop window
+  --user-data-dir <path>     Launch: explicit Chromium user-data-dir
+                             (default: ~/.shuvgeist/profile/<browser>)
+  --use-default-profile      Launch: share the user's existing browser profile
+                             instead of an isolated Shuvgeist-managed one
   --json              Machine-readable JSON output
 
 Config file: ~/.shuvgeist/bridge.json
@@ -1070,6 +1082,8 @@ async function main(): Promise<void> {
 		else if (arg === "--browser" && i + 1 < rest.length) globalFlags.browser = rest[++i];
 		else if (arg === "--extension-path" && i + 1 < rest.length) globalFlags.extensionPath = rest[++i];
 		else if (arg === "--profile" && i + 1 < rest.length) globalFlags.profile = rest[++i];
+		else if (arg === "--user-data-dir" && i + 1 < rest.length) globalFlags.userDataDir = rest[++i];
+		else if (arg === "--use-default-profile") globalFlags.useDefaultProfile = true;
 		else if (arg === "--headless") globalFlags.headless = true;
 		else if (arg === "--foreground") globalFlags.foreground = true;
 		else if (arg === "-f" && i + 1 < rest.length) globalFlags.file = rest[++i];

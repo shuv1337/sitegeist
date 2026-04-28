@@ -120,12 +120,16 @@ Browser and extension discovery for `launch` can also come from flags, env, conf
 shuvgeist launch
 shuvgeist launch --url https://example.com --foreground
 shuvgeist launch --headless
+shuvgeist launch --use-default-profile               # share the user's normal browser profile
+shuvgeist launch --user-data-dir /tmp/shuvgeist-x    # explicit isolated profile path
 shuvgeist close
 shuvgeist status --json
 ```
 
 Use `launch` when the user does not already have a suitable browser session open.
 Use the existing browser session when the user specifically wants their current authenticated tabs, extensions, or state.
+
+Profile isolation: by default, `launch` opens the browser against an isolated, persistent user-data-dir under `~/.shuvgeist/profile/<browser-name>`. This avoids fighting an already-open instance of the same browser using its default profile (which would otherwise cause `--load-extension` to be silently ignored and `launch` to time out). Logins inside the Shuvgeist-managed profile persist across runs. Pass `--use-default-profile` to share the user's normal profile instead, or `--user-data-dir <path>` to point at a specific directory.
 
 ### Navigation and tab control
 

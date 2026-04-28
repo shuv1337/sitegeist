@@ -41,6 +41,8 @@ export interface CliFlags {
 	browser?: string;
 	extensionPath?: string;
 	profile?: string;
+	userDataDir?: string;
+	useDefaultProfile?: boolean;
 	headless?: boolean;
 	foreground?: boolean;
 }
@@ -626,6 +628,8 @@ export function createCommandPlan(
 					browser: flags.browser,
 					extensionPath: flags.extensionPath,
 					profile: flags.profile,
+					userDataDir: flags.userDataDir,
+					useDefaultProfile: flags.useDefaultProfile,
 					// Accept the URL to open either as --url (as documented in the
 					// help text) or as a positional. When --url is used on the launch
 					// command it is the URL to open in the launched browser, NOT the

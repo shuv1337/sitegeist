@@ -125,6 +125,8 @@ describe("cli-core", () => {
 				browser: undefined,
 				extensionPath: undefined,
 				profile: undefined,
+				userDataDir: undefined,
+				useDefaultProfile: undefined,
 				url: "https://example.com",
 				headless: true,
 				foreground: undefined,
@@ -140,6 +142,8 @@ describe("cli-core", () => {
 				browser: undefined,
 				extensionPath: undefined,
 				profile: undefined,
+				userDataDir: undefined,
+				useDefaultProfile: undefined,
 				url: "https://example.com",
 				headless: true,
 				foreground: undefined,
@@ -157,6 +161,31 @@ describe("cli-core", () => {
 		).toMatchObject({
 			kind: "launch",
 			options: { url: "https://flag.example" },
+		});
+	});
+
+	it("forwards --user-data-dir and --use-default-profile to LaunchOptions", () => {
+		const readFileText = vi.fn();
+
+		// --user-data-dir is forwarded verbatim; the launcher resolves it.
+		expect(
+			createCommandPlan("launch", [], { userDataDir: "/tmp/shuvgeist-test" }, readFileText),
+		).toMatchObject({
+			kind: "launch",
+			options: { userDataDir: "/tmp/shuvgeist-test", useDefaultProfile: undefined },
+		});
+
+		// --use-default-profile is a boolean opt-out and is forwarded verbatim.
+		expect(createCommandPlan("launch", [], { useDefaultProfile: true }, readFileText)).toMatchObject({
+			kind: "launch",
+			options: { userDataDir: undefined, useDefaultProfile: true },
+		});
+
+		// Default invocation leaves both undefined so the launcher applies its
+		// isolated-profile default.
+		expect(createCommandPlan("launch", [], {}, readFileText)).toMatchObject({
+			kind: "launch",
+			options: { userDataDir: undefined, useDefaultProfile: undefined },
 		});
 	});
 });

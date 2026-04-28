@@ -6,9 +6,9 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve as resolvePath } from "node:path";
 import {
 	browserNotFoundMessage,
 	discoverBrowser,
@@ -31,6 +31,22 @@ export interface LaunchOptions {
 	url?: string;
 	headless?: boolean;
 	foreground?: boolean;
+	/**
+	 * Explicit Chromium `--user-data-dir`. When omitted, an isolated, persistent
+	 * Shuvgeist-managed directory is used (per-browser, under
+	 * `~/.shuvgeist/profile/<browser-name>`). This prevents the spawned browser
+	 * from colliding with an already-open instance of the same browser using its
+	 * default profile, which is the most common reason `launch` appears to do
+	 * nothing or times out waiting for the extension to register.
+	 */
+	userDataDir?: string;
+	/**
+	 * When true, do NOT pass `--user-data-dir` at all. The launched browser
+	 * shares the user's default profile directory. Restores the pre-isolation
+	 * behavior when the caller specifically wants their existing logins,
+	 * extensions, and history.
+	 */
+	useDefaultProfile?: boolean;
 }
 
 export interface LaunchResult {
@@ -38,6 +54,7 @@ export interface LaunchResult {
 	browserPath: string;
 	extensionPath: string;
 	browserName: string;
+	userDataDir?: string;
 	alreadyRunning?: boolean;
 }
 
@@ -45,6 +62,33 @@ export interface CloseResult {
 	pid: number;
 	killed: boolean;
 	signal: string;
+}
+
+// ---------------------------------------------------------------------------
+// User-data-dir resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * Pure helper: decide which `--user-data-dir` value (if any) the launched
+ * browser should use, given a partial set of options and the resolved browser
+ * name. Exported so unit tests can lock the resolution rules without spawning
+ * a real browser.
+ *
+ * Returns `undefined` when no `--user-data-dir` flag should be passed (i.e.
+ * `useDefaultProfile: true`), and an absolute path otherwise.
+ */
+export function resolveUserDataDir(
+	options: Pick<LaunchOptions, "userDataDir" | "useDefaultProfile">,
+	browserName: string,
+	homeDir: string = homedir(),
+): string | undefined {
+	if (options.useDefaultProfile) {
+		return undefined;
+	}
+	if (options.userDataDir) {
+		return resolvePath(options.userDataDir);
+	}
+	return join(homeDir, ".shuvgeist", "profile", browserName);
 }
 
 // ---------------------------------------------------------------------------
@@ -78,13 +122,34 @@ export async function launchBrowser(options: LaunchOptions, statusUrl: string): 
 		};
 	}
 
-	// 4. Build Chrome flags
-	const args: string[] = [
-		`--load-extension=${extension.extensionPath}`,
-		"--no-first-run",
-		"--disable-default-apps",
-		"--remote-debugging-port=0",
-	];
+	// 4. Resolve the user-data-dir.
+	//
+	// Default to an isolated, persistent Shuvgeist-managed directory, segregated
+	// per browser binary. This avoids the common failure mode where an
+	// already-running browser of the same family captures the spawn (because
+	// Chromium-family browsers single-instance against a user-data-dir) and the
+	// `--load-extension` flag is silently ignored, which then manifests as
+	// `launchBrowser` hanging until `waitForLaunch` times out.
+	//
+	// Callers can still opt out via `useDefaultProfile: true` (share the user's
+	// real profile, accepting the collision risk) or `userDataDir: "/path"`
+	// (use an explicit directory).
+	const resolvedUserDataDir = resolveUserDataDir(options, browser.browserName);
+	if (resolvedUserDataDir) {
+		try {
+			mkdirSync(resolvedUserDataDir, { recursive: true });
+		} catch (err) {
+			const message = err instanceof Error ? err.message : String(err);
+			throw new Error(`Failed to create user-data-dir at ${resolvedUserDataDir}: ${message}`);
+		}
+	}
+
+	// 5. Build Chromium flags
+	const args: string[] = [`--load-extension=${extension.extensionPath}`, "--no-first-run", "--disable-default-apps"];
+
+	if (resolvedUserDataDir) {
+		args.push(`--user-data-dir=${resolvedUserDataDir}`);
+	}
 
 	if (options.headless) {
 		args.push("--headless=new");
@@ -98,7 +163,7 @@ export async function launchBrowser(options: LaunchOptions, statusUrl: string): 
 		args.push(options.url);
 	}
 
-	// 5. Launch browser
+	// 6. Launch browser
 	const child = spawn(browser.browserPath, args, {
 		detached: !options.foreground,
 		stdio: options.foreground ? "inherit" : "ignore",
@@ -116,7 +181,7 @@ export async function launchBrowser(options: LaunchOptions, statusUrl: string): 
 	// Write PID file
 	writeFileSync(LAUNCH_PID_FILE, String(pid));
 
-	// 6. Wait for extension registration
+	// 7. Wait for extension registration
 	await waitForLaunch(statusUrl, 15_000);
 
 	return {
@@ -124,6 +189,7 @@ export async function launchBrowser(options: LaunchOptions, statusUrl: string): 
 		browserPath: browser.browserPath,
 		extensionPath: extension.extensionPath,
 		browserName: browser.browserName,
+		userDataDir: resolvedUserDataDir,
 	};
 }
 

@@ -6,6 +6,8 @@
 
 - **Kokoro-first TTS read-along with word-level highlighting**: When using the local Kokoro provider, TTS now supports full read-along with current-word highlighting on the page and center-band auto-scroll. The implementation uses the `/dev/captioned_speech` endpoint for timing data and synchronizes audio playback with CSS Custom Highlight API (with fallback to positioned divs).
 
+- `shuvgeist launch` now defaults to an isolated, persistent, per-browser user-data-dir under `~/.shuvgeist/profile/<browser-name>` so a spawned browser does not collide with an already-open instance of the same browser using its default profile (the most common reason `launch` previously appeared to do nothing or to time out waiting for extension registration). Two new flags expose the policy: `--user-data-dir <path>` overrides the default with an explicit directory, and `--use-default-profile` skips `--user-data-dir` entirely so the launched browser shares the user's existing profile, logins, and extensions. The default's persistence means logins inside Shuvgeist's managed profile survive across runs, so `launch` does not re-prompt every time.
+
 ### Changed
 
 - **TTS overlay now uses Shadow DOM** for style isolation and connects via a persistent `chrome.runtime.Port` for bidirectional state sync and playhead updates.
