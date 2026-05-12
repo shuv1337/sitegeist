@@ -28,7 +28,7 @@ function activeTab(url = "https://example.com"): chrome.tabs.Tab {
 	return { id: 9, windowId: 7, active: true, url, title: "Example" };
 }
 
-function createTools() {
+function createTools(options: { offscreenTabId?: number } = { offscreenTabId: 100 }) {
 	const chunks: RecordChunkEventData[] = [];
 	const sendToOffscreen = vi.fn(async (message: BridgeToOffscreenMessage) => {
 		if (message.type === "bridge-record-start") {
@@ -42,7 +42,7 @@ function createTools() {
 	const tools = new RecordingTools({
 		windowId: 7,
 		ensureOffscreenDocument: vi.fn(async () => undefined),
-		getOffscreenTabId: vi.fn(async () => 100),
+		getOffscreenTabId: vi.fn(async () => options.offscreenTabId),
 		sendToOffscreen,
 		emitRecordChunk: (data) => chunks.push(data),
 	});
@@ -68,6 +68,12 @@ describe("RecordingTools", () => {
 	it("rejects stop with no active recording", async () => {
 		const { tools } = createTools();
 		await expect(tools.stop({ tabId: 9 })).rejects.toThrow("No active recording for tab 9");
+	});
+
+	it("omits consumerTabId when the offscreen document has no tab id", async () => {
+		const { tools } = createTools({ offscreenTabId: undefined });
+		await expect(tools.start({ tabId: 9 })).resolves.toMatchObject({ recordingId: expect.any(String), tabId: 9 });
+		expect(getMediaStreamId).toHaveBeenCalledWith({ targetTabId: 9 });
 	});
 
 	it("record_status never includes chunk bytes", async () => {

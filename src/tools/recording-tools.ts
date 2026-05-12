@@ -42,7 +42,7 @@ interface RecordingState {
 export interface RecordingToolsOptions {
 	windowId: number;
 	ensureOffscreenDocument: () => Promise<void>;
-	getOffscreenTabId: () => Promise<number>;
+	getOffscreenTabId: () => Promise<number | undefined>;
 	sendToOffscreen: <T>(message: BridgeToOffscreenMessage) => Promise<T | null>;
 	emitRecordChunk: (data: RecordChunkEventData) => void;
 	telemetry?: BridgeTelemetry;
@@ -91,7 +91,7 @@ export class RecordingTools {
 	private readonly recordingsById = new Map<string, RecordingState>();
 	private readonly windowId: number;
 	private readonly ensureOffscreenDocument: () => Promise<void>;
-	private readonly getOffscreenTabId: () => Promise<number>;
+	private readonly getOffscreenTabId: () => Promise<number | undefined>;
 	private readonly sendToOffscreen: <T>(message: BridgeToOffscreenMessage) => Promise<T | null>;
 	private readonly emitRecordChunk: (data: RecordChunkEventData) => void;
 	private readonly telemetry?: BridgeTelemetry;
@@ -128,7 +128,9 @@ export class RecordingTools {
 		await this.ensureOffscreenDocument();
 		const consumerTabId = await this.getOffscreenTabId();
 		const recordingId = createRecordingId(tabId);
-		const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId: tabId, consumerTabId });
+		const streamIdOptions: chrome.tabCapture.GetMediaStreamOptions =
+			typeof consumerTabId === "number" ? { targetTabId: tabId, consumerTabId } : { targetTabId: tabId };
+		const streamId = await chrome.tabCapture.getMediaStreamId(streamIdOptions);
 		const startedAtMs = Date.now();
 		let resolveCompletion!: (result: RecordStopResult) => void;
 		let rejectCompletion!: (error: Error) => void;

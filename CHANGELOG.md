@@ -24,6 +24,8 @@
 
 ### Fixed
 
+- `shuvgeist record start` now falls back to Chrome 116+'s offscreen-document stream-id behavior when `chrome.runtime.getContexts()` does not expose a `tabId` for the offscreen document, instead of failing with "Offscreen document tab id is unavailable for tabCapture".
+
 - `shuvgeist repl` and `shuvgeist eval` now honor `--tab-id` and `--frame-id` and execute against the targeted tab without changing the active tab. Previously these flags were silently ignored or dropped before reaching the runtime. (#3)
 
 ### Technical

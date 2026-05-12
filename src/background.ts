@@ -974,7 +974,7 @@ const screenshotRouter: ScreenshotRouter = {
 // RECORDING ROUTER (background -> offscreen tabCapture recorder)
 // ============================================================================
 
-async function getOffscreenDocumentTabId(): Promise<number> {
+async function getOffscreenDocumentTabId(): Promise<number | undefined> {
 	await ensureOffscreenDocument();
 	const offscreenUrl = chrome.runtime.getURL("offscreen.html");
 	const contexts = await chrome.runtime.getContexts({
@@ -982,10 +982,11 @@ async function getOffscreenDocumentTabId(): Promise<number> {
 		documentUrls: [offscreenUrl],
 	});
 	const context = contexts.find((candidate) => typeof candidate.tabId === "number" && candidate.tabId >= 0);
-	if (typeof context?.tabId !== "number" || context.tabId < 0) {
-		throw new Error("Offscreen document tab id is unavailable for tabCapture");
-	}
-	return context.tabId;
+	// Chrome's offscreen document contexts do not always expose a tabId. On
+	// Chrome 116+ a stream id created by the service worker can be consumed by an
+	// extension offscreen document when consumerTabId is omitted, so return
+	// undefined and let RecordingTools use that supported fallback.
+	return typeof context?.tabId === "number" && context.tabId >= 0 ? context.tabId : undefined;
 }
 
 const recordingToolsByWindowId = new Map<number, RecordingTools>();
