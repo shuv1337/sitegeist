@@ -227,6 +227,12 @@ export class RecordingTools {
 				attributes: { "record.recording_id": recordingId },
 			});
 			state.screencastActive = true;
+			setTimeout(() => {
+				void this.captureSeedFrame(state).catch((error) => {
+					state.lastError = error instanceof Error ? error.message : String(error);
+					state.span?.recordError(error);
+				});
+			}, 0);
 			state.maxDurationTimer = setTimeout(() => {
 				void this.stopRecording(state, "stopped_max_duration").catch((error) => this.forceStop(state, error));
 			}, maxDurationMs);
@@ -379,11 +385,43 @@ export class RecordingTools {
 		if (typeof frame.data !== "string" || typeof frame.sessionId !== "number") {
 			return;
 		}
-		const bytes = base64ByteLength(frame.data);
+		this.emitFrameData(state, frame.data, Date.now(), frame.metadata);
+		if (state.sourceBytes >= BridgeDefaults.RECORD_HARD_MAX_BYTES && !state.stopping) {
+			await this.stopRecording(state, "stopped_max_bytes");
+		}
+	}
+
+	private async captureSeedFrame(state: RecordingState): Promise<void> {
+		if (!this.recordingsById.has(state.recordingId) || state.stopping || state.frameCount > 0) return;
+		const result = await this.debuggerManager.sendCommandWithTrace<{ data?: string }>(
+			state.tabId,
+			"Page.captureScreenshot",
+			{
+				format: state.format,
+				quality: state.quality,
+				captureBeyondViewport: false,
+			},
+			{
+				parent: state.span?.context,
+				operationName: "record.screencast.seed_frame",
+				attributes: { "record.recording_id": state.recordingId },
+			},
+		);
+		if (result && typeof result.data === "string" && result.data.length > 0) {
+			this.emitFrameData(state, result.data, Date.now());
+		}
+	}
+
+	private emitFrameData(
+		state: RecordingState,
+		dataBase64: string,
+		capturedAtMs: number,
+		metadata?: ScreencastFrameMetadata,
+	): void {
+		const bytes = base64ByteLength(dataBase64);
 		const seq = state.frameCount;
 		state.sourceBytes += bytes;
 		state.frameCount += 1;
-		const capturedAtMs = Date.now();
 		this.telemetry
 			?.startSpan("record.frame", {
 				parent: state.span?.context,
@@ -400,13 +438,10 @@ export class RecordingTools {
 			tabId: state.tabId,
 			seq,
 			format: state.format,
-			dataBase64: frame.data,
+			dataBase64,
 			capturedAtMs,
-			metadata: frame.metadata,
+			metadata,
 		});
-		if (state.sourceBytes >= BridgeDefaults.RECORD_HARD_MAX_BYTES && !state.stopping) {
-			await this.stopRecording(state, "stopped_max_bytes");
-		}
 	}
 
 	private async stopRecording(state: RecordingState, outcome: RecordOutcome): Promise<RecordStopResult> {

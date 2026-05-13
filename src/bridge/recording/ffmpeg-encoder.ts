@@ -104,8 +104,8 @@ export class FfmpegWebmEncoder {
 		if (!this.process || this.finished) throw new Error("ffmpeg encoder is not active");
 		this.finished = true;
 		if (!this.lastFrame) {
-			this.process.stdin.end();
-			await this.waitForExit();
+			this.process.stdin.destroy();
+			this.process.kill("SIGTERM");
 			throw new Error("Recording produced no frames");
 		}
 		while (this.nextFrameAtMs <= endedAtMs) {

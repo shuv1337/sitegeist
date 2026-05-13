@@ -617,6 +617,7 @@ async function cmdRecord(
 	let timeout: ReturnType<typeof setTimeout> | undefined;
 	let encoder: FfmpegWebmEncoder | undefined;
 	let encoderQueue = Promise.resolve();
+	const pendingFrames: Array<{ frame: Buffer; capturedAtMs: number }> = [];
 	const telemetry = resolveCliTelemetry(configFile);
 	const span = telemetry?.startSpan("bridge.cli.record_start", {
 		kind: "client",
@@ -717,6 +718,11 @@ async function cmdRecord(
 				mimeType: result.mimeType,
 				videoBitsPerSecond: result.videoBitsPerSecond,
 			});
+			for (const pendingFrame of pendingFrames.splice(0)) {
+				encoderQueue = encoderQueue
+					.then(() => encoder?.pushFrame(pendingFrame.frame, pendingFrame.capturedAtMs))
+					.then(() => undefined);
+			}
 			span?.setAttributes({
 				"record.recording_id": result.recordingId,
 				"record.tab_id": result.tabId,
@@ -734,11 +740,15 @@ async function cmdRecord(
 		if (isRecordFrameEvent(event)) {
 			if (recordingId && event.data.recordingId !== recordingId) return;
 			if (!recordingId) recordingId = event.data.recordingId;
-			if (event.data.dataBase64 && encoder) {
+			if (event.data.dataBase64) {
 				const frame = Buffer.from(event.data.dataBase64, "base64");
-				encoderQueue = encoderQueue
-					.then(() => encoder?.pushFrame(frame, event.data.capturedAtMs))
-					.then(() => undefined);
+				if (encoder) {
+					encoderQueue = encoderQueue
+						.then(() => encoder?.pushFrame(frame, event.data.capturedAtMs))
+						.then(() => undefined);
+				} else {
+					pendingFrames.push({ frame, capturedAtMs: event.data.capturedAtMs });
+				}
 			}
 			if (event.data.final && event.data.summary) {
 				const summary = event.data.summary;

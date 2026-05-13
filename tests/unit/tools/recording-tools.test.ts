@@ -100,6 +100,30 @@ describe("RecordingTools", () => {
 		expect(status).not.toHaveProperty("dataBase64");
 	});
 
+	it("emits a seed frame for static pages", async () => {
+		vi.useFakeTimers();
+		const { tools, debuggerManager, frames } = createTools();
+		debuggerManager.sendCommandWithTrace.mockImplementation(async (_tabId, method) => {
+			if (method === "Page.captureScreenshot") return { data: "c2VlZA==" };
+			return undefined;
+		});
+		const started = await tools.start({ tabId: 9 });
+		await vi.advanceTimersByTimeAsync(0);
+		expect(debuggerManager.sendCommandWithTrace).toHaveBeenCalledWith(
+			9,
+			"Page.captureScreenshot",
+			expect.objectContaining({ format: "jpeg", quality: 70, captureBeyondViewport: false }),
+			expect.any(Object),
+		);
+		expect(frames[0]).toMatchObject({
+			recordingId: started.recordingId,
+			tabId: 9,
+			seq: 0,
+			format: "jpeg",
+			dataBase64: "c2VlZA==",
+		});
+	});
+
 	it("emits record_frame and acks screencast frames", async () => {
 		const { tools, debuggerManager, frames } = createTools();
 		const started = await tools.start({ tabId: 9 });
