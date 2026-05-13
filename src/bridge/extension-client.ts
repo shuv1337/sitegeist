@@ -8,10 +8,11 @@
  */
 
 import { isUsableWindowId } from "../tools/helpers/browser-target.js";
+import { getShuvgeistVersion } from "../version.js";
 import type { CommandDispatcher } from "./command-dispatcher.js";
 import { bridgeLog, type LogFields } from "./logging.js";
 import type { AbortMessage, BridgeCapability, BridgeRequest, BridgeResponse, RegisterResult } from "./protocol.js";
-import { ErrorCodes, getBridgeCapabilities } from "./protocol.js";
+import { BRIDGE_PROTOCOL_VERSION, ErrorCodes, getBridgeCapabilities } from "./protocol.js";
 import type { BridgeTelemetry } from "./telemetry.js";
 import { parseTraceparent } from "./telemetry.js";
 
@@ -188,6 +189,8 @@ export class BridgeClient {
 				type: "register",
 				role: "extension",
 				token,
+				protocolVersion: BRIDGE_PROTOCOL_VERSION,
+				appVersion: getShuvgeistVersion(),
 				windowId,
 				sessionId,
 				capabilities,

@@ -39,7 +39,6 @@ import {
 	type BridgeStateData,
 	type BridgeToOffscreenMessage,
 	type BridgeToSidepanelMessage,
-	type OffscreenToBackgroundMessage,
 } from "./bridge/internal-messages.js";
 import { type BridgeCapability, ErrorCodes, getBridgeCapabilities } from "./bridge/protocol.js";
 import type { SessionBridgeAdapter } from "./bridge/session-bridge.js";
@@ -306,12 +305,7 @@ async function closeTtsOverlay(tabId = ttsOverlayTabId): Promise<void> {
 }
 
 export function getOffscreenDocumentReasons(): chrome.offscreen.Reason[] {
-	return [
-		chrome.offscreen.Reason.WORKERS,
-		chrome.offscreen.Reason.AUDIO_PLAYBACK,
-		chrome.offscreen.Reason.BLOBS,
-		chrome.offscreen.Reason.USER_MEDIA,
-	];
+	return [chrome.offscreen.Reason.WORKERS, chrome.offscreen.Reason.AUDIO_PLAYBACK, chrome.offscreen.Reason.BLOBS];
 }
 
 let offscreenReady = false;
@@ -906,7 +900,7 @@ function normalizeScreenshotViewport(value: unknown): {
 }
 
 const screenshotRouter: ScreenshotRouter = {
-	async capture(_params, signal, traceContext) {
+	async capture(params, signal, traceContext) {
 		if (signal?.aborted) {
 			throw Object.assign(new Error("Screenshot capture aborted"), { code: ErrorCodes.ABORTED });
 		}
@@ -919,7 +913,7 @@ const screenshotRouter: ScreenshotRouter = {
 		const windowId = await resolveWindowId();
 		let tabId: number;
 		try {
-			const resolved = await resolveTabTarget({ windowId });
+			const resolved = await resolveTabTarget({ windowId, tabId: params.tabId });
 			tabId = resolved.tabId;
 		} catch {
 			throw new Error("No active tab for screenshot");
@@ -971,23 +965,8 @@ const screenshotRouter: ScreenshotRouter = {
 };
 
 // ============================================================================
-// RECORDING ROUTER (background -> offscreen tabCapture recorder)
+// RECORDING ROUTER (background -> debugger screencast recorder)
 // ============================================================================
-
-async function getOffscreenDocumentTabId(): Promise<number | undefined> {
-	await ensureOffscreenDocument();
-	const offscreenUrl = chrome.runtime.getURL("offscreen.html");
-	const contexts = await chrome.runtime.getContexts({
-		contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT],
-		documentUrls: [offscreenUrl],
-	});
-	const context = contexts.find((candidate) => typeof candidate.tabId === "number" && candidate.tabId >= 0);
-	// Chrome's offscreen document contexts do not always expose a tabId. On
-	// Chrome 116+ a stream id created by the service worker can be consumed by an
-	// extension offscreen document when consumerTabId is omitted, so return
-	// undefined and let RecordingTools use that supported fallback.
-	return typeof context?.tabId === "number" && context.tabId >= 0 ? context.tabId : undefined;
-}
 
 const recordingToolsByWindowId = new Map<number, RecordingTools>();
 
@@ -1000,24 +979,13 @@ async function getRecordingTools(): Promise<RecordingTools> {
 	if (!tools) {
 		tools = new RecordingTools({
 			windowId,
-			ensureOffscreenDocument,
-			getOffscreenTabId: getOffscreenDocumentTabId,
-			sendToOffscreen: (message) => sendMessageSafe(message),
-			emitRecordChunk: (data) => bridgeClient.sendEvent("record_chunk", { ...data }),
+			debuggerManager: sharedDebuggerManager,
+			emitRecordFrame: (data) => bridgeClient.sendEvent("record_frame", { ...data }),
 			telemetry: extensionTelemetry,
 		});
 		recordingToolsByWindowId.set(windowId, tools);
 	}
 	return tools;
-}
-
-function dispatchRecordingOffscreenMessage(message: OffscreenToBackgroundMessage): void {
-	for (const tools of recordingToolsByWindowId.values()) {
-		if (tools.hasRecording(message.recordingId)) {
-			tools.handleOffscreenMessage(message);
-			return;
-		}
-	}
 }
 
 async function getRecordingToolsForControl(tabId?: number): Promise<RecordingTools> {
@@ -1521,12 +1489,6 @@ chrome.runtime.onMessage.addListener(
 					} satisfies TtsRuntimeResponse),
 				);
 			return true;
-		}
-
-		if (message.type === "record-chunk" || message.type === "record-error" || message.type === "record-stopped") {
-			dispatchRecordingOffscreenMessage(message as unknown as OffscreenToBackgroundMessage);
-			sendResponse({ ok: true });
-			return false;
 		}
 
 		if (message.type === "bridge-get-state") {

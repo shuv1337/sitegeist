@@ -1,5 +1,5 @@
 import { WebSocket } from "ws";
-import type { BridgeResponse, RegisterResult } from "../../src/bridge/protocol.js";
+import { BRIDGE_PROTOCOL_VERSION, type BridgeResponse, type RegisterResult } from "../../src/bridge/protocol.js";
 
 export async function openRegisteredClient(url: string, token: string, role: "cli" | "extension", extra: Record<string, unknown> = {}) {
 	const ws = new WebSocket(url);
@@ -7,7 +7,16 @@ export async function openRegisteredClient(url: string, token: string, role: "cl
 		ws.once("open", resolve);
 		ws.once("error", reject);
 	});
-	ws.send(JSON.stringify({ type: "register", role, token, ...extra }));
+	ws.send(
+		JSON.stringify({
+			type: "register",
+			role,
+			token,
+			protocolVersion: BRIDGE_PROTOCOL_VERSION,
+			appVersion: "test",
+			...extra,
+		}),
+	);
 	const registerResult = await readMessage<RegisterResult>(ws);
 	return { ws, registerResult };
 }

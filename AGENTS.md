@@ -11,7 +11,7 @@ If the user did not give you a concrete task, read README.md first.
 - Keep the Shuvgeist bridge managed automatically by the extension and CLI, not by an ad-hoc shell process.
 - The automatic bridge startup path should point at the development source tree (`node_modules/.bin/tsx src/bridge/cli.ts serve ...`), not the built `dist-cli` artifact, so local bridge changes are picked up after restart.
 - When the bridge implementation or CLI entrypoint changes, verify the automatic bridge startup path still works and update the relevant bridge bootstrap or docs as needed.
-- `shuvgeist record` currently relies on Chrome `tabCapture.getMediaStreamId`; live testing may fail unless Chrome considers the extension invoked for the target tab. If a test fails with `Extension has not been invoked for the current page (see activeTab permission)`, treat it as a browser permission/design issue rather than a CLI transport failure.
+- `shuvgeist record` uses Chrome debugger `Page.startScreencast` and CLI-side ffmpeg encoding; recording live tests require `ffmpeg` on PATH.
 
 ## Code Quality
 - No `any` types unless absolutely necessary

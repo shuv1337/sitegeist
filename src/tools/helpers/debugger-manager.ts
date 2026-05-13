@@ -9,11 +9,14 @@ type DebuggerEventListener = (
 	source: chrome.debugger.Debuggee,
 ) => void;
 
+type DebuggerDetachListener = (event: { tabId: number; reason: chrome.debugger.DetachReason | string }) => void;
+
 interface TabDebuggerState {
 	refCount: number;
 	owners: Set<string>;
 	enabledDomains: Set<DebuggerDomain>;
 	listeners: Set<DebuggerEventListener>;
+	detachListeners: Set<DebuggerDetachListener>;
 	serial: Promise<void>;
 }
 
@@ -45,13 +48,26 @@ export class DebuggerManager {
 		chrome.debugger.onDetach.addListener((source, reason) => {
 			const tabId = source.tabId;
 			if (typeof tabId !== "number") return;
-			if (!this.tabStates.has(tabId)) return;
+			const state = this.tabStates.get(tabId);
+			if (!state) return;
 			bridgeLog("warn", "debugger detached", {
 				role: "extension",
 				tabId,
 				outcome: "error",
 				error: String(reason),
 			});
+			for (const listener of state.detachListeners) {
+				try {
+					listener({ tabId, reason });
+				} catch (error) {
+					bridgeLog("warn", "debugger detach listener failed", {
+						role: "extension",
+						tabId,
+						outcome: "error",
+						error: error instanceof Error ? error.message : String(error),
+					});
+				}
+			}
 			this.tabStates.delete(tabId);
 		});
 	}
@@ -215,6 +231,15 @@ export class DebuggerManager {
 		};
 	}
 
+	addDetachListener(tabId: number, listener: DebuggerDetachListener): () => void {
+		const state = this.getOrCreateState(tabId);
+		state.detachListeners.add(listener);
+		return () => {
+			const existing = this.tabStates.get(tabId);
+			existing?.detachListeners.delete(listener);
+		};
+	}
+
 	setTelemetry(telemetry?: BridgeTelemetry): void {
 		this.telemetry = telemetry;
 	}
@@ -243,6 +268,7 @@ export class DebuggerManager {
 				owners: new Set<string>(),
 				enabledDomains: new Set<DebuggerDomain>(),
 				listeners: new Set<DebuggerEventListener>(),
+				detachListeners: new Set<DebuggerDetachListener>(),
 				serial: Promise.resolve(),
 			};
 			this.tabStates.set(tabId, state);

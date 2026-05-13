@@ -38,33 +38,44 @@ These decisions span tiers and prevent rework. Lock them before any milestone st
 
 Per recon Q5: bump a minor protocol version on each feature that adds new bridge ops/events. Older CLIs talking to newer bridges (or vice versa) must surface a clean error instead of silent breakage.
 
-- [ ] Add `BRIDGE_PROTOCOL_VERSION` constant to `src/bridge/protocol.ts` (if not present already) and bump it as new ops/events land.
-- [ ] Tier 0 adds `record_frame` → bump.
-- [ ] Tier 1 adds `tabRef`, `cookies.import`, `doctor.*` → bump.
-- [ ] Tier 2.1 adds `chat.*` → bump.
-- [ ] Tier 2.2–2.4 adds `react.*`, `vitals`, `launch.initScripts` → bump.
+Versioning is a handshake, not just a constant:
+
+- [x] Add `BRIDGE_PROTOCOL_VERSION` and `BRIDGE_PROTOCOL_MIN_VERSION` to `src/bridge/protocol.ts`.
+- [x] Add `protocolVersion` and `appVersion` to `CliRegistration` and `ExtensionRegistration`.
+- [x] Add `protocolVersion`, `minProtocolVersion`, `serverVersion`, and extension `{ protocolVersion, appVersion }` fields to `/status` (`BridgeServerStatus`).
+- [x] `BridgeServer` rejects missing/unsupported registration versions with a clean `register_result` error such as: `Bridge protocol mismatch: CLI 3, server supports 4-4. Rebuild or restart shuvgeist.`
+- [x] CLI compares its local protocol with `/status` before long-running commands and prints the same remediation message.
+- [ ] Tests cover: old CLI → new server, new CLI → old/missing-version server, old extension → new server, and mismatched extension/CLI while `/status` still parses.
+- [x] Tier 0 adds `record_frame` and recording lease metadata → bump.
+- [ ] Tier 1 adds `tabRef`, `cookies.import`, `doctor_probe`/`doctor_status` → bump.
+- [ ] Tier 2.1 adds `chat_start`/`chat_stream` → bump.
+- [ ] Tier 2.2–2.4 adds `react_tree`/`react_inspect`, `vitals`, `launch.initScripts` → bump.
 
 ### CDC-2. Tab targeting unification (`tabId` ↔ `tabRef`)
 
 Tier 1.3 introduces stable string refs (`t1`, `gmail`). Every command that today accepts `--tab-id` must accept the new `--tab <ref|label>` shape **without breaking back-compat**.
 
-- [ ] Define `TargetedBridgeParams` in `src/bridge/protocol.ts` once, then have all targeted ops extend it:
+- [ ] Extend the existing `TargetedBridgeParams` in `src/bridge/protocol.ts` once, then have all targeted ops extend it:
   ```ts
   export interface TargetedBridgeParams {
-    tabId?: number;     // legacy; accepted for back-compat
+    tabId?: number;     // legacy; accepted only from --tab-id
     tabRef?: string;    // 't1', 'gmail'
-    windowId?: number;
+    windowId?: number;  // optional future/multi-window disambiguation
+    frameId?: number;   // existing frame targeting stays here
   }
   ```
-- [ ] `applyTargetFlags` in `src/bridge/cli-core.ts` accepts `--tab <value>` and routes to `tabRef` if non-numeric or to `tabId` if numeric **and** the `--tab-id` flag was used. Bare integers passed to `--tab` are rejected with the agent-browser teaching error.
+- [ ] `applyTargetFlags` in `src/bridge/cli-core.ts` accepts `--tab <value>` and `--tab-id <number>`:
+  - `--tab-id 123` → `tabId: 123`.
+  - `--tab t1` / `--tab gmail` → `tabRef`.
+  - `--tab 123` → reject with the agent-browser teaching error pointing at `tab list` / `tabs --json`.
 - [ ] **`record start --tab-id N` and `record start --tab <ref|label>` must both work** — see Tier 0 §0.6 and Tier 1.3.
-- [ ] `RecordStartParams` extends `TargetedBridgeParams` once Tier 1.3 lands; until then, keep its existing `tabId?: number` field.
+- [ ] `RecordStartParams`, `ScreenshotParams`, network/perf/device/frame params, snapshot/locate/ref params, and REPL/eval params all use `TargetedBridgeParams` by the end of Tier 1.3.
 
 ### CDC-3. Doctor probe set extends as features ship
 
 Each new feature contributes one probe to `shuvgeist doctor` so health visibility never drifts behind shipped surface area.
 
-- [ ] Tier 0: `ffmpeg` availability probe (binary on PATH, version ≥ a sane floor, can encode a 1-frame WebM).
+- [ ] Tier 0: CLI preflight plus a future `doctor` probe contract for `ffmpeg` availability (binary on PATH, version ≥ a sane floor, can encode a 1-frame WebM). The actual `doctor` command lands in Tier 1.1.
 - [ ] Tier 1.3: `tab-registry` probe (registry is live, ref allocation works, no orphan refs).
 - [ ] Tier 2.1: `chat-runner` probe (offscreen chat runner can start + cleanly stop, pi-agent-core tools register, OAuth tokens resolve).
 - [ ] Tier 2.2: `react-devtools-hook` probe (hook installs, doesn't conflict with browser DevTools).
@@ -79,7 +90,7 @@ Each feature adds an entry under `## [Unreleased]` per `AGENTS.md` rules. Tier 0
 
 Per project `AGENTS.md`:
 
-- Every new bridge op emits a span with `record.recording_id`-style stable correlation ids.
+- Every new bridge op and long-lived server lease emits a span with `record.recording_id`-style stable correlation ids.
 - Every new probe, chat-runner step, react op, vitals measurement gets logs + latency.
 - Raw frame bytes, raw spoken text, raw cookie values, raw model output: **never logged**. Only sizes, hashes (where useful), counts, durations, outcomes, error class/message.
 - Validate end-to-end through Maple Ingest → OTEL collector → Tinybird before any milestone is declared complete.
@@ -91,6 +102,7 @@ Per `AGENTS.md`/`gitnexus` rules:
 - [ ] Run `gitnexus_impact` upstream on every symbol named in the per-tier "Files" tables before editing it. Capture the blast radius in the PR description.
 - [ ] Run `gitnexus_detect_changes()` before each commit.
 - [ ] HIGH/CRITICAL risk: pause and notify the user.
+- [ ] If the GitNexus index is stale, run `npx gitnexus analyze`; if it fails, record the failure and compensate with direct code inspection before editing.
 
 ### CDC-7. Sibling skill mirroring
 
@@ -128,22 +140,25 @@ This must succeed on an authenticated open `x.com` tab without the user clicking
 | Background routing | `src/background.ts` |
 | Offscreen cleanup | `src/offscreen.ts` (delete recording-specific code; keep TTS intact) |
 | Bridge protocol | `src/bridge/protocol.ts`, `src/bridge/internal-messages.ts` |
-| Bridge server forwarding | `src/bridge/server.ts` |
+| Bridge server forwarding / leases | `src/bridge/server.ts` |
+| Debugger ownership | `src/tools/helpers/debugger-manager.ts` (detach callback API only; HIGH impact) |
 | CLI surface | `src/bridge/cli.ts`, `src/bridge/cli-core.ts` |
 | New CLI encoder | `src/bridge/recording/ffmpeg-encoder.ts` |
 | Browser command dispatch | `src/bridge/browser-command-executor.ts` |
-| Tests | `tests/unit/tools/recording-tools.test.ts` (rewrite), `tests/unit/bridge/recording/ffmpeg-encoder.test.ts` (new), CLI parser tests |
-| Validation | `package.json`, `AGENTS.md` (remove tabCapture caveat), `CHANGELOG.md` |
+| Tests | `tests/unit/tools/recording-tools.test.ts` (rewrite), `tests/unit/bridge/recording/ffmpeg-encoder.test.ts` (new), `tests/unit/bridge/server-recording-lease.test.ts` (new), CLI parser tests |
+| Validation | `package.json`, `static/manifest.chrome.json`, `AGENTS.md` (remove tabCapture caveat), `CHANGELOG.md` |
 
 ### Target architecture
 
 1. CLI verifies `ffmpeg` is on PATH before sending `record_start`.
 2. CLI opens websocket → `record_start` with target tab and recording params.
-3. Background resolves the tab, acquires a debugger session via the shared `DebuggerManager` with owner `record-screencast:<tabId>`, enables `Page` domain, calls `Page.startScreencast`.
-4. Extension forwards every `Page.screencastFrame` as a bridge `record_frame` event (JPEG, base64); acks each frame with `Page.screencastFrameAck`.
-5. CLI normalises variable-rate frames to a fixed FPS and pipes JPEG bytes into ffmpeg → WebM at `--out`.
-6. Extension stops on explicit `record_stop`, `max-duration`, hard byte ceiling, tab closure, debugger detach, or CLI disconnect.
-7. CLI closes ffmpeg stdin, waits for encoder, validates output, prints summary (`recordingId`, frame count, source bytes, encoded size, outcome).
+3. Server records a long-lived recording lease after successful `record_start` (`cliConnectionId`, `recordingId`, `tabId`) even though the request itself returns immediately.
+4. Background resolves the tab, acquires a debugger session via the shared `DebuggerManager` with owner `record-screencast:<tabId>`, enables `Page` domain, calls `Page.startScreencast`.
+5. Extension forwards every `Page.screencastFrame` as a bridge `record_frame` event (JPEG, base64); acks each frame with `Page.screencastFrameAck`.
+6. CLI normalises variable-rate frames to a fixed FPS and pipes JPEG bytes into ffmpeg → WebM at `--out`.
+7. Extension stops on explicit `record_stop`, `max-duration`, hard byte ceiling, tab closure, debugger detach, or CLI disconnect.
+8. On CLI disconnect/crash, server uses the lease to send a synthetic `record_stop` to the extension and releases the lease.
+9. CLI closes ffmpeg stdin, waits for encoder, validates output, prints summary (`recordingId`, frame count, source bytes, encoded size, outcome).
 
 ### Why CLI-side encoding
 
@@ -222,67 +237,89 @@ RECORD_MAX_FPS: 30,
 RECORD_MIN_FPS: 1,
 ```
 
+Server-side lease metadata (internal, not public protocol):
+
+```ts
+interface ActiveRecordingLease {
+  cliConnectionId: string;
+  recordingId: string;
+  tabId: number;
+  startedAt: number;
+}
+```
+
 ### Milestones
 
 #### 0.1 Safety prep
 
-- [ ] `git status --short` — review pre-existing diff on `recording-tools.ts`, `background.ts`, `AGENTS.md`, `CHANGELOG.md`, and the test file. Decide which interim tabCapture-fallback changes to keep vs. supersede.
-- [ ] `gitnexus_impact` on: `RecordingTools`, `cmdRecord`, `BridgeEventType`, `RecordStartParams`, `RecordStopResult`, any new debugger helper symbols.
-- [ ] If HIGH/CRITICAL, surface to user before continuing.
+- [x] `git status --short` — review pre-existing diff on `recording-tools.ts`, `background.ts`, `AGENTS.md`, `CHANGELOG.md`, and the test file. Decide which interim tabCapture-fallback changes to keep vs. supersede.
+- [x] Run `gitnexus_impact` on: `RecordingTools`, `cmdRecord`, `BridgeEventType`, `RecordStartParams`, `RecordStopResult`, `DebuggerManager`, and any new debugger helper symbols.
+- [x] Treat `DebuggerManager` as HIGH risk unless a fresh impact report proves otherwise; isolate its change to a small detach-callback API and test existing network/perf/device/debugger users.
+- [x] If GitNexus analysis fails because the index is stale/broken, record the exact failure and do direct code inspection of all affected callers before editing.
+- [x] If HIGH/CRITICAL, surface to user before continuing.
 
-#### 0.2 Protocol additions
+#### 0.2 Protocol additions, compatibility handshake, and recording leases
 
-- [ ] Add `record_frame` to `BridgeEventType`. Keep `record_chunk` for one minor as legacy alias.
-- [ ] Add `RecordFrameEventData`, extend `RecordStartParams`, extend `RecordStopResult` / `RecordStatusResult` with `sourceBytes`, `encodedSizeBytes`, `frameCount`.
-- [ ] Add the five defaults above to `BridgeDefaults`.
-- [ ] Bump bridge protocol version per CDC-1.
-- [ ] `src/bridge/server.ts`: allow `record_frame` only when active capabilities include `record_start`.
+- [x] Add `record_frame` to `BridgeEventType`. Keep `record_chunk` for one minor as legacy alias.
+- [x] Add `RecordFrameEventData`, extend `RecordStartParams`, extend `RecordStopResult` / `RecordStatusResult` with `sourceBytes`, `encodedSizeBytes`, `frameCount`.
+- [x] Add the five defaults above to `BridgeDefaults`.
+- [x] Implement CDC-1 protocol handshake fields in `src/bridge/protocol.ts`, `src/bridge/server.ts`, `src/bridge/extension-client.ts`, and `src/bridge/cli.ts` before introducing incompatible event behavior.
+- [x] `src/bridge/server.ts`: allow `record_frame` and legacy `record_chunk` only when active capabilities include `record_start`.
+- [x] `src/bridge/server.ts`: create an `activeRecordingLeases` map after a successful `record_start` response, keyed by CLI connection and `recordingId`.
+- [x] `src/bridge/server.ts`: clear leases on final `record_frame` / legacy `record_chunk` summary, explicit `record_stop`, extension disconnect, and CLI disconnect.
+- [x] `src/bridge/server.ts`: on CLI disconnect with active recording leases, send a synthetic `record_stop` request to the active extension so debugger sessions are released even if the CLI crashes after `record_start` returned.
+- [ ] Tests cover lease creation, final-summary cleanup, explicit stop cleanup, extension disconnect cleanup, and CLI disconnect synthetic stop.
 
 #### 0.3 Debugger-based RecordingTools
 
 Replace tabCapture internals in `src/tools/recording-tools.ts`:
 
-- [ ] Inject `DebuggerManager` via `RecordingToolsOptions`.
-- [ ] Remove `ensureOffscreenDocument`, `getOffscreenTabId`, `sendToOffscreen` dependencies.
-- [ ] Rename `emitRecordChunk` → `emitRecordFrame` once protocol lands.
-- [ ] Add fields: `owner`, `removeListener?`, `frameCount`, `sourceBytes`, `format`, `fps`, `quality`, `maxWidth?`, `maxHeight?`, `screencastActive`.
+- [x] First add a minimal `DebuggerManager` detach callback API, e.g. `addDetachListener(tabId, listener): () => void`, without changing existing acquire/release semantics.
+- [x] Ensure detach callbacks run before tab state deletion and include `{ tabId, reason }`; listener errors must be caught/logged and must not break other debugger users.
+- [ ] Add focused tests for `DebuggerManager` detach callbacks and regression tests for existing event listeners.
+- [x] Inject `DebuggerManager` via `RecordingToolsOptions`.
+- [x] Remove `ensureOffscreenDocument`, `getOffscreenTabId`, `sendToOffscreen` dependencies.
+- [x] Rename `emitRecordChunk` → `emitRecordFrame` once protocol lands.
+- [x] Add fields: `owner`, `removeListener?`, `frameCount`, `sourceBytes`, `format`, `fps`, `quality`, `maxWidth?`, `maxHeight?`, `screencastActive`.
 - [ ] `start()`:
-  - [ ] `resolveTabTarget({ windowId, tabId })`; protected-URL rejection (debugger-specific wording).
-  - [ ] One-recording-per-tab rejection.
-  - [ ] Drop the tabCapture-specific "active tab required" check after live testing confirms `Page.startScreencast` doesn't need it.
-  - [ ] Acquire debugger with owner `record-screencast:<tabId>`, ensure `Page` domain, register listener **before** starting screencast.
-  - [ ] Call `Page.startScreencast` with `{ format: "jpeg", quality, maxWidth, maxHeight, everyNthFrame }`.
-  - [ ] Start max-duration timer **after** screencast succeeds.
-  - [ ] Return `RecordStartResult` immediately.
-- [ ] Listener: only `Page.screencastFrame`. Validate `params.data` (string) + `params.sessionId` (number). Always `Page.screencastFrameAck`. Increment `frameCount` + `sourceBytes` by base64 byte length. Emit `record_frame`. Stop with `stopped_max_bytes` at `BridgeDefaults.RECORD_HARD_MAX_BYTES`.
-- [ ] `stopRecording()`: `Page.stopScreencast` once → remove listener → release debugger owner → emit final `record_frame` with summary.
-- [ ] `forceStop()` / debugger-detach: idempotent listener removal + release; `lastError` and `stopped_error` outcome.
+  - [x] `resolveTabTarget({ windowId, tabId })`; protected-URL rejection (debugger-specific wording).
+  - [x] One-recording-per-tab rejection.
+  - [x] Drop the tabCapture-specific "active tab required" check after live testing confirms `Page.startScreencast` doesn't need it.
+  - [x] Acquire debugger with owner `record-screencast:<tabId>`, ensure `Page` domain, register listener **before** starting screencast.
+  - [x] Call `Page.startScreencast` with `{ format: "jpeg", quality, maxWidth, maxHeight, everyNthFrame }`.
+  - [x] Start max-duration timer **after** screencast succeeds.
+  - [x] Return `RecordStartResult` immediately.
+- [x] Listener: only `Page.screencastFrame`. Validate `params.data` (string) + `params.sessionId` (number). Always `Page.screencastFrameAck`. Increment `frameCount` + `sourceBytes` by base64 byte length. Emit `record_frame`. Stop with `stopped_max_bytes` at `BridgeDefaults.RECORD_HARD_MAX_BYTES`.
+- [x] `stopRecording()`: `Page.stopScreencast` once → remove listener → release debugger owner → emit final `record_frame` with summary.
+- [x] `forceStop()` / debugger-detach: idempotent listener removal + release; `lastError` and `stopped_error` outcome.
 
 #### 0.4 Offscreen recording cleanup
 
 After 0.3 passes tests, delete recording-specific code from `src/offscreen.ts`:
 
-- [ ] Remove the `bridge-record-*`, `record-chunk`, `record-error`, `record-stopped` handlers.
-- [ ] Keep all TTS offscreen code untouched (see ownership contract in the TTS section).
-- [ ] Remove `getOffscreenDocumentTabId()` in `src/background.ts` if unused.
-- [ ] Simplify `getRecordingTools()` to inject `windowId`, `debuggerManager: sharedDebuggerManager`, `emitRecordFrame`, and `telemetry`.
-- [ ] Update comments throughout: "tabCapture recorder" → "debugger screencast recorder".
+- [x] Remove the `bridge-record-*`, `record-chunk`, `record-error`, `record-stopped` handlers.
+- [x] Keep all TTS offscreen code untouched (see ownership contract in the TTS section).
+- [x] Remove `getOffscreenDocumentTabId()` in `src/background.ts` if unused.
+- [x] Remove `USER_MEDIA` from `getOffscreenDocumentReasons()` if no remaining offscreen feature needs it; keep `BLOBS` only if TTS still needs blob/object URL support.
+- [x] Remove the `tabCapture` manifest permission from `static/manifest.chrome.json` if no other feature still uses it.
+- [x] Simplify `getRecordingTools()` to inject `windowId`, `debuggerManager: sharedDebuggerManager`, `emitRecordFrame`, and `telemetry`.
+- [x] Update comments throughout: "tabCapture recorder" → "debugger screencast recorder".
 
 #### 0.5 CLI ffmpeg encoder
 
 New module `src/bridge/recording/ffmpeg-encoder.ts`:
 
-- [ ] Static imports only.
-- [ ] `assertFfmpegAvailable()` — `spawnSync('ffmpeg', ['-version'])` with short timeout. On failure:
+- [x] Static imports only.
+- [x] `assertFfmpegAvailable()` — `spawnSync('ffmpeg', ['-version'])` with short timeout. On failure:
 
   ```
   shuvgeist record requires ffmpeg for debugger screencast encoding. Install ffmpeg or add it to PATH.
   ```
 
-- [ ] `FfmpegWebmEncoder` with `start`, `pushFrame`, `finish`, `abort`.
-- [ ] Fixed-FPS frame duplication keyed to `capturedAtMs` and final `endedAtMs` so static pages still yield a full-length video.
-- [ ] Bitrate default `2_500_000` when `--video-bitrate` unset.
-- [ ] VP8 → `libvpx`; VP9 / generic WebM → `libvpx-vp9`.
+- [x] `FfmpegWebmEncoder` with `start`, `pushFrame`, `finish`, `abort`.
+- [x] Fixed-FPS frame duplication keyed to `capturedAtMs` and final `endedAtMs` so static pages still yield a full-length video.
+- [x] Bitrate default `2_500_000` when `--video-bitrate` unset.
+- [x] VP8 → `libvpx`; VP9 / generic WebM → `libvpx-vp9`.
 - [ ] Reference args:
 
   ```
@@ -291,21 +328,21 @@ New module `src/bridge/recording/ffmpeg-encoder.ts`:
     -an -c:v libvpx-vp9 -b:v 2500000 -pix_fmt yuv420p output.webm
   ```
 
-- [ ] Collect stderr; surface on failure. Stat output after finish for `encodedSizeBytes`.
+- [x] Collect stderr; surface on failure. Stat output after finish for `encodedSizeBytes`.
 
 #### 0.6 CLI wiring
 
-- [ ] `src/bridge/cli-core.ts`: add `--fps`, `--quality`, `--max-width`, `--max-height`. Validate numeric ranges (FPS within `RECORD_MIN_FPS`–`RECORD_MAX_FPS`, quality 1–100). Validate `--mime-type` against WebM-only list.
+- [x] `src/bridge/cli-core.ts` and `src/bridge/cli.ts` argument parsing: add `--fps`, `--quality`, `--max-width`, `--max-height`. Validate numeric ranges (FPS within `RECORD_MIN_FPS`–`RECORD_MAX_FPS`, quality 1–100, dimensions positive). Validate `--mime-type` against the WebM-only list (`video/webm`, `video/webm;codecs=vp8`, `video/webm;codecs=vp9`).
 - [ ] `src/bridge/cli.ts`:
-  - [ ] `cmdRecord()` calls `assertFfmpegAvailable()` before opening the websocket.
-  - [ ] On `record_start` success, start the encoder.
-  - [ ] On each `record_frame`: decode base64, `encoder.pushFrame`.
-  - [ ] On final frame: `encoder.finish` → fold `encodedSizeBytes` into summary.
-  - [ ] No more `createWriteStream(outPath)` in `cmdRecord`.
-  - [ ] SIGINT: `record_stop` → wait for summary → finish encoder if frames exist. WebSocket close mid-recording: abort encoder, exit code 3.
-  - [ ] Update `isRecordChunkEvent` → `isRecordFrameEvent` (or support both during transition).
-  - [ ] Update `printRecordStopSummary` to print `Frames`, `Source bytes`, `Encoded size`; JSON includes `out` and `encodedSizeBytes`.
-- [ ] CLI help string:
+  - [x] `cmdRecord()` calls `assertFfmpegAvailable()` before opening the websocket.
+  - [x] On `record_start` success, start the encoder.
+  - [x] On each `record_frame`: decode base64, `encoder.pushFrame`.
+  - [x] On final frame: `encoder.finish` → fold `encodedSizeBytes` into summary.
+  - [x] No more `createWriteStream(outPath)` in `cmdRecord`.
+  - [x] SIGINT: `record_stop` → wait for summary → finish encoder if frames exist. WebSocket close mid-recording: abort encoder, exit code 3.
+  - [x] Update `isRecordChunkEvent` → `isRecordFrameEvent` (or support both during transition).
+  - [x] Update `printRecordStopSummary` to print `Frames`, `Source bytes`, `Encoded size`; JSON includes `out` and `encodedSizeBytes`.
+- [x] CLI help string:
 
   ```
   shuvgeist record start --out file.webm [--tab-id N | --tab ref] [--max-duration 30s]
@@ -319,15 +356,28 @@ New module `src/bridge/recording/ffmpeg-encoder.ts`:
 
 `RecordingTools` (rewrite `tests/unit/tools/recording-tools.test.ts`):
 
-- [ ] Mock `DebuggerManager`; remove tabCapture mocks.
-- [ ] `start()` sends `Page.startScreencast` with expected defaults.
-- [ ] Duplicate-recording rejection.
-- [ ] `record_status` exposes frame/source byte stats, never frame bytes.
-- [ ] `Page.screencastFrame` handling emits `record_frame`, increments counters, acks.
-- [ ] Max-duration → `Page.stopScreencast` → `stopped_max_duration`.
-- [ ] Tab closure → `stopped_tab_closed`.
-- [ ] Debugger detach/error → `stopped_error`.
-- [ ] Disallowed schemes rejected.
+- [x] Mock `DebuggerManager`; remove tabCapture mocks.
+- [x] `start()` sends `Page.startScreencast` with expected defaults.
+- [x] Duplicate-recording rejection.
+- [x] `record_status` exposes frame/source byte stats, never frame bytes.
+- [x] `Page.screencastFrame` handling emits `record_frame`, increments counters, acks.
+- [x] Max-duration → `Page.stopScreencast` → `stopped_max_duration`.
+- [x] Tab closure → `stopped_tab_closed`.
+- [x] Debugger detach/error → `stopped_error`.
+- [x] Disallowed schemes rejected.
+
+Server/bridge lifecycle:
+
+- [ ] Successful `record_start` creates a server lease.
+- [ ] Final summary clears the lease.
+- [ ] Explicit `record_stop` clears the lease.
+- [ ] CLI disconnect after `record_start` sends synthetic `record_stop` and clears the lease.
+- [ ] Protocol mismatch registration is rejected cleanly.
+
+Debugger manager:
+
+- [ ] Detach callbacks fire before state deletion and do not break regular debugger event listeners.
+- [ ] Existing network/perf/device/debugger-manager tests still pass.
 
 CLI encoder (new `tests/unit/bridge/recording/ffmpeg-encoder.test.ts`):
 
@@ -343,8 +393,10 @@ CLI parser:
 
 #### 0.8 Build + live validation
 
-- [ ] `./check.sh`, `npm run build`, `npm run build:cli`.
-- [ ] Reload extension; `shuvgeist status --json` lists `record_start`, `record_stop`, `record_status`.
+- [x] `./check.sh`, `npm run build`, `npm run build:cli`.
+- [ ] Reload extension; `shuvgeist status --json` lists `record_start`, `record_stop`, `record_status`, and protocol/app version metadata.
+- [ ] Simulate old/new protocol mismatch and verify a clean remediation error.
+- [ ] Kill/disconnect the CLI mid-recording and verify the extension releases the debugger session and a later recording on the same tab can start.
 - [ ] Smoke on `example.com`:
 
   ```bash
@@ -359,10 +411,11 @@ CLI parser:
 
 #### 0.9 Documentation cleanup
 
-- [ ] `CHANGELOG.md` `## [Unreleased]` → `### Changed`: "shuvgeist record now uses CDP `Page.startScreencast` + CLI-side ffmpeg encoding instead of tabCapture; fixes activeTab invocation failure for CLI-started recordings."
-- [ ] `AGENTS.md`: remove the tabCapture `activeTab` warning paragraph; add a one-liner that recording needs `ffmpeg` on PATH.
-- [ ] `README.md`: ffmpeg requirement, video-only/no-audio limitation, sensitive-browser-access gate retained.
-- [ ] Delete dead tabCapture fallback code paths.
+- [x] `CHANGELOG.md` `## [Unreleased]` → `### Changed`: "shuvgeist record now uses CDP `Page.startScreencast` + CLI-side ffmpeg encoding instead of tabCapture; fixes activeTab invocation failure for CLI-started recordings."
+- [x] `AGENTS.md`: remove the tabCapture `activeTab` warning paragraph; add a one-liner that recording needs `ffmpeg` on PATH.
+- [x] `README.md`: ffmpeg requirement, video-only/no-audio limitation, sensitive-browser-access gate retained.
+- [x] `static/manifest.chrome.json`: remove `tabCapture` permission if unused after the migration.
+- [x] Delete dead tabCapture fallback code paths.
 
 ### Acceptance — Tier 0
 
@@ -372,8 +425,11 @@ CLI parser:
 - [ ] `record_status --json` reports active recording metadata without frame bytes.
 - [ ] `record_stop --json` stops an active recording from a separate CLI invocation.
 - [ ] SIGINT during `record start` finalises a playable partial WebM when ≥1 frame captured.
+- [ ] CLI crash/disconnect after `record_start` releases the debugger session and does not leave a stuck active recording.
+- [ ] Protocol mismatches fail with a clear rebuild/restart remediation.
+- [ ] `static/manifest.chrome.json` no longer requests `tabCapture` unless a separate feature still requires it.
 - [ ] `./check.sh` passes; `npm run build` + `npm run build:cli` succeed.
-- [ ] `gitnexus_detect_changes()` reviewed before commit.
+- [x] `gitnexus_detect_changes()` reviewed before commit.
 
 ### Risks
 
@@ -384,7 +440,8 @@ CLI parser:
 | Variable frame cadence breaks duration | CLI duplicates last frame to the fixed FPS using `capturedAtMs` + `endedAtMs` |
 | Missing ffmpeg | Preflight check + clear CLI error |
 | Static pages yield ≤1 frame | Last-frame duplication until final duration; fail clearly only when zero frames captured |
-| Websocket disconnect mid-recording | Send `record_stop`; abort encoder; release debugger via abort handling |
+| Websocket disconnect mid-recording | Server recording lease sends synthetic `record_stop`; CLI aborts encoder; extension releases debugger via stop/detach handling |
+| Protocol skew after bridge changes | Registration handshake + `/status` metadata rejects incompatible CLI/server/extension combinations before commands run |
 | Protected pages | Disallowed-scheme guard + clear error |
 
 ---
@@ -407,7 +464,7 @@ Recon source: `https://files.shuv.me/agent-browser-vs-shuvgeist.html` and `/tmp/
 
 | Probe | Shuvgeist-adapted check |
 |---|---|
-| `environment` | OS, Node ≥ 20, npm/pnpm presence, `~/.shuvgeist` writable, **`ffmpeg` on PATH** (added per CDC-3 / Tier 0) |
+| `environment` | OS, Node ≥ 20, npm presence (pnpm optional), `~/.shuvgeist` writable, **`ffmpeg` on PATH** (added per CDC-3 / Tier 0) |
 | `chrome` | Chrome ≥ 141; `--fix` opens download instructions |
 | `daemon` | Bridge process running; port reachable; PID file fresh |
 | `config` | `~/.shuvgeist/bridge.json` parses; required keys; valid extension id |
@@ -424,7 +481,12 @@ Recon source: `https://files.shuv.me/agent-browser-vs-shuvgeist.html` and `/tmp/
 - Create: `src/bridge/doctor/index.ts`, `src/bridge/doctor/types.ts`, `src/bridge/doctor/output.ts`, `src/bridge/doctor/fix.ts`.
 - Create: `src/bridge/doctor/probes/{environment,chrome,daemon,config,security,providers,network,extension,launch}.ts`.
 - Modify: `src/bridge/cli.ts` (register subcommand).
+- Modify: `src/bridge/protocol.ts` — add `doctor_probe` / `doctor_status` method types if a probe must run inside the extension.
+- Modify: `src/bridge/browser-command-executor.ts` and `src/background.ts` — route extension-only probes (OAuth token resolution, extension manifest version, tab registry, chat runner, React/vitals/init-script future probes).
+- Modify: `src/bridge/server.ts` — include protocol/app version metadata in `/status` and expose stale/mismatched extension information.
 - Tests: `tests/unit/bridge/doctor/probes.test.ts` (one describe per probe), `tests/integration/bridge/doctor.test.ts` (full pass/fail matrix), `tests/e2e/extension/doctor.e2e.ts` (smoke).
+
+**Probe placement:** host probes run in the CLI process; extension/storage probes run through bridge `doctor_*` methods; server/protocol probes use `/status`. Doctor must not guess extension-only state from host files.
 
 **Probe contract:**
 
@@ -440,7 +502,7 @@ export interface ProbeOpts { offline: boolean; quick: boolean; fix: boolean }
 - [ ] Exit 0 when all probes pass; exit 2 on any error-severity probe.
 - [ ] `--json` parses for both pass and fail.
 - [ ] `--fix` idempotent across consecutive runs.
-- [ ] Version-mismatched bridge daemon detected and killable with `--fix`.
+- [ ] Version/protocol-mismatched bridge daemon or extension detected and killable/restartable with `--fix` where safe.
 - [ ] **`ffmpeg` probe surfaces a clear remediation hint if missing** (joins Tier 0 acceptance).
 - [ ] Probe execution: independent probes run in parallel (recon Q4); results emitted in stable order.
 - [ ] Doctor never modifies the user's Chrome profile and never transmits secrets.
@@ -460,58 +522,73 @@ export interface ProbeOpts { offline: boolean; quick: boolean; fix: boolean }
 - Cover every key actually read by `src/bridge/settings.ts`.
 - `description` fields written for humans.
 - `examples` for non-obvious values.
-- `pnpm schema:check` script fails CI if `settings.ts` keys drift from schema.
+- `npm run schema:check` script (add the script and required dev dependency such as `ajv-cli`) fails CI if `settings.ts` / `CliConfigFile` keys drift from schema.
 
 **Acceptance:**
 
-- [ ] `npx ajv validate -s shuvgeist.schema.json -d ~/.shuvgeist/bridge.json` passes.
+- [ ] `npm run schema:check` passes, including `npx ajv validate -s shuvgeist.schema.json -d ~/.shuvgeist/bridge.json` or an equivalent fixture validation.
 - [ ] IntelliJ + VS Code autocomplete when `bridge.json` declares `$schema`.
 
 ### 1.3 Stable tab labels (`tab new --label`, `tab <label>`)
 
+**Ownership decision.** The tab registry is extension-owned, because the extension already observes tab lifecycle events and resolves real browser targets. Labels reset on extension reload/browser restart (not on `serve` restart). Store the registry in `chrome.storage.session` so labels survive MV3 service-worker suspension but not browser-session restart.
+
 **Files:**
 
 - Create: `src/bridge/tab-registry.ts`.
-- Modify: `src/bridge/protocol.ts` — introduce `TargetedBridgeParams` per CDC-2; thread through all targeted ops including `RecordStartParams`.
+- Modify: `src/bridge/protocol.ts` — extend `TargetedBridgeParams` per CDC-2; add tab registry result types; extend `NavigateParams` or add `tab_*` methods for labeled tab create/list/rename/close.
 - Modify: `src/bridge/cli-core.ts` — `applyTargetFlags` resolves `--tab <ref|label>`; rejects bare integers with teaching error.
-- Modify: `src/bridge/cli.ts` — `cmdTab` (`tab new`, `tab close`, `tab list`) honours labels; `cmdRecord` accepts `--tab`.
-- Modify: `src/background.ts` — `tabs.onCreated`/`onRemoved` feed the registry.
-- Modify: `src/sidepanel.ts` — show labels in tab picker (interactive mode).
+- Modify: `src/bridge/cli.ts` — add `tab new|list|rename|close` while preserving legacy `tabs` and `switch`; `cmdRecord` accepts `--tab`.
+- Modify: `src/bridge/browser-command-executor.ts` — resolve `tabRef` before targeted operations.
+- Modify: `src/background.ts` — `tabs.onCreated`/`onRemoved`/`onUpdated` feed the extension-owned registry and storage-session persistence.
+- Modify: `src/bridge/protocol.ts`, `src/bridge/cli-core.ts`, `src/background.ts` — make `screenshot` a targeted op too (`ScreenshotParams extends TargetedBridgeParams`), because Tier 1 acceptance uses `shuvgeist screenshot --tab gmail`.
+- Modify: `src/sidepanel.ts` — show labels in tab picker / tab displays where applicable.
 - Modify: `skills/shuvgeist/SKILL.md` + `~/repos/shuvbot-skills/shuvgeist/SKILL.md` — document labels.
-- Tests: `tests/unit/bridge/tab-registry.test.ts` (id stability under churn), `tests/integration/bridge/tab-targeting.test.ts` (labels survive cross-command calls).
+- Tests: `tests/unit/bridge/tab-registry.test.ts` (id stability under churn), `tests/integration/bridge/tab-targeting.test.ts` (labels survive cross-command calls), screenshot-targeting tests.
 
 **Tab registry contract:**
 
 ```ts
-export interface TabHandle { ref: string; label?: string; tabId: number; windowId: number; url?: string; title?: string; createdAt: number }
+export interface TabHandle { ref: string; label?: string; tabId: number; windowId: number; url?: string; title?: string; createdAt: number; updatedAt: number }
 export interface TabRegistry {
   register(tabId: number, windowId: number, label?: string): TabHandle;
   resolve(input: string): TabHandle | undefined;
   list(): TabHandle[];
   remove(tabId: number): void;
   rename(refOrLabel: string, newLabel: string): TabHandle;
+  hydrate(handles: TabHandle[]): void;
 }
 ```
 
 **Acceptance:**
 
 - [ ] After opening 5 tabs and closing 2 and 3, refs for 1, 4, 5 are unchanged.
-- [ ] `shuvgeist tab new --label gmail https://mail.google.com` creates the tab + label.
-- [ ] `shuvgeist screenshot --tab gmail` works.
-- [ ] `shuvgeist screenshot --tab 0` rejected with teaching error pointing at `tab list`.
+- [ ] `shuvgeist tab new --label gmail https://mail.google.com` creates the tab + label; legacy `shuvgeist tabs --json` still works.
+- [ ] `shuvgeist screenshot --tab gmail` works because screenshot is added to the targeted-op matrix.
+- [ ] `shuvgeist screenshot --tab 0` rejected with teaching error pointing at `tab list` / `tabs --json`.
 - [ ] `shuvgeist record start --tab gmail --out f.webm` works (Tier 0 compatibility).
-- [ ] Labels reset on `serve` restart (matches agent-browser; recon Q2).
-- [ ] Agent loop emits labels, never raw `tabId`.
+- [ ] Labels survive MV3 service-worker suspension through `chrome.storage.session`, but reset on extension reload/browser restart.
+- [ ] User-facing agent/CLI tab summaries prefer labels/refs over raw `tabId`; raw `tabId` remains available in JSON for debugging/back-compat.
 
 ### 1.4 cURL cookie import
+
+**Command grammar:** preserve legacy `shuvgeist cookies` as `cookies get`. Add explicit subcommands:
+
+```bash
+shuvgeist cookies get [--url <url>] [--json]
+shuvgeist cookies import (--curl <file> | --header <file> | --file <json-file>) --url <url> [--json]
+# optional compatibility alias: cookies set -> cookies import
+```
+
+`--url` is required for import unless every parsed cookie has enough domain/scheme information to construct a safe URL for `chrome.cookies.set`; ambiguous domain/path input is rejected.
 
 **Files:**
 
 - Create: `src/bridge/cookies/import.ts`, `src/bridge/cookies/parsers/{json,curl,header}.ts`.
-- Modify: `src/bridge/cli.ts` — `cookies set --curl <file>`, `--header <file>`, `--json <file>`.
-- Modify: `src/bridge/protocol.ts` — `CookieImportParams`.
-- Modify: `src/bridge/browser-command-executor.ts` — bulk `chrome.cookies.set` calls.
-- Tests: `tests/unit/bridge/cookies/import.test.ts` (three fixtures + ambiguous fallback), `tests/integration/bridge/cookies.test.ts` (round-trip).
+- Modify: `src/bridge/cli.ts` / `src/bridge/cli-core.ts` — `cookies get`, `cookies import --curl <file>`, `--header <file>`, `--file <json-file>`; legacy `cookies` maps to get.
+- Modify: `src/bridge/protocol.ts` — discriminated `CookiesParams` / `CookieImportParams`.
+- Modify: `src/bridge/browser-command-executor.ts` — `cookies get` keeps existing sensitive bridge behavior; `cookies import` performs bulk `chrome.cookies.set` calls with safe URL/domain validation.
+- Tests: `tests/unit/bridge/cookies/import.test.ts` (three fixtures + ambiguous fallback), `tests/integration/bridge/cookies.test.ts` (round-trip, invalid domain/url rejection).
 
 **Parser contract:**
 
@@ -519,6 +596,9 @@ export interface TabRegistry {
 export interface ParsedCookie { name: string; value: string; domain?: string; path?: string; expirationDate?: number; httpOnly?: boolean; secure?: boolean; sameSite?: 'no_restriction' | 'lax' | 'strict' }
 export type CookieFormat = 'json' | 'curl' | 'cookie-header';
 export interface ImportResult { format: CookieFormat; cookies: ParsedCookie[]; warnings: string[] }
+export type CookiesParams =
+  | { action?: 'get'; url?: string }
+  | { action: 'import'; url?: string; cookies: ParsedCookie[]; sourceFormat: CookieFormat };
 export function importCookies(raw: string, hint?: CookieFormat): ImportResult;
 ```
 
@@ -527,13 +607,14 @@ export function importCookies(raw: string, hint?: CookieFormat): ImportResult;
 1. Starts with `[` or `{` → `json`.
 2. Contains `curl ` or `--cookie` or `-H 'Cookie:` → `curl`.
 3. Contains `=` and `;` and no whitespace before `=` → `cookie-header`.
-4. Otherwise reject with "could not detect format; pass `--json` / `--curl` / `--header`".
+4. Otherwise reject with "could not detect format; pass `--file` / `--curl` / `--header`".
 
 **Acceptance:**
 
 - [ ] All three fixture formats produce identical `ParsedCookie[]` for the same logical input.
 - [ ] Ambiguous input rejected, not silently misparsed.
-- [ ] `cookies get` round-trips values just set via `set --curl`.
+- [ ] `cookies get` round-trips values just imported via `cookies import --curl`.
+- [ ] Import rejects cookies whose URL/domain/sameSite/secure combination cannot be safely passed to `chrome.cookies.set`.
 
 ### Tier 1 changelog (preview)
 
@@ -549,10 +630,12 @@ export function importCookies(raw: string, hint?: CookieFormat): ImportResult;
 - JSON Schema for `~/.shuvgeist/bridge.json`, served at
   `https://shuvgeist.dev/schema.json`.
 - Stable tab labels via `tab new --label <name>`; refs survive other tabs
-  closing. `--tab <ref|label>` accepted everywhere (including `record start`);
-  bare integers rejected with a teaching error.
-- Bulk cookie import via `cookies set --curl <file>` with auto-detection of
-  JSON, cURL, and Cookie-header formats.
+  closing and MV3 service-worker suspension. `--tab <ref|label>` accepted
+  everywhere targeted operations are supported (including `record start` and
+  `screenshot`); bare integers rejected with a teaching error.
+- Bulk cookie import via `cookies import --curl <file> --url <url>` with
+  auto-detection of JSON, cURL, and Cookie-header formats. Legacy
+  `shuvgeist cookies` remains an alias for `cookies get`.
 ```
 
 ---
@@ -563,9 +646,18 @@ The headline command. Real browser, real authenticated sessions.
 
 ### Critical reuse
 
-Do **not** reimplement the pi-agent-core agent loop. The sidepanel already runs that loop with all tools from `src/tools/index.ts`. The CLI's job is to drive that same loop from a terminal.
+Do **not** reimplement the pi-agent-core agent loop. The sidepanel already runs that loop, but today the setup is embedded in `src/sidepanel.ts` with `ChatPanel`, renderers, UI callbacks, model selection, storage, and runtime-provider wiring. Tier 2.1 must first extract a UI-free runtime factory.
 
-**Architecture decision:** Option A — terminal frontend talks to a bridge command that runs the agent loop in the extension's offscreen document. Rationale: the OAuth moat (extension-stored Anthropic/OpenAI tokens) is structural; re-implementing token handoff to a Node process discards it. Latency mitigated by streaming.
+**Prerequisite refactor:** create a shared module such as `src/agent/runtime.ts` / `src/agent/tools-factory.ts` that owns:
+
+- model normalization/default selection and API-key/OAuth token resolution,
+- `Agent` construction and event subscription hooks,
+- browser tool factory wiring (`NavigateTool`, REPL runtime providers, skills, extract document/image, optional debugger),
+- session persistence hooks that sidepanel and offscreen can supply separately.
+
+Sidepanel then becomes a UI frontend over the shared runtime; offscreen chat-runner becomes a headless frontend over the same runtime. Avoid adding new inline dynamic imports while extracting this module.
+
+**Architecture decision:** Option A — terminal frontend talks to a bridge command that runs the shared agent runtime in the extension's offscreen document. Rationale: the OAuth moat (extension-stored Anthropic/OpenAI tokens) is structural; re-implementing token handoff to a Node process discards it. Latency mitigated by streaming.
 
 ### Modes
 
@@ -576,15 +668,16 @@ Do **not** reimplement the pi-agent-core agent loop. The sidepanel already runs 
 
 ### Files
 
+- Create: `src/agent/runtime.ts`, `src/agent/tools-factory.ts` (shared UI-free agent setup extracted from `src/sidepanel.ts`).
 - Create: `src/bridge/chat/cli.ts`, `src/bridge/chat/session.ts`, `src/bridge/chat/protocol.ts`.
-- Create: `src/offscreen/chat-runner.ts` (uses existing `src/tools/index.ts`).
+- Create: `src/offscreen/chat-runner.ts` (uses the shared runtime factory, not `ChatPanel`).
 - Create: `src/messages/chat-stream.ts`.
 - Modify: `src/bridge/cli.ts` — register `chat`.
 - Modify: `src/bridge/protocol.ts` — chat params/results; bump version.
 - Modify: `src/bridge/browser-command-executor.ts` — route chat ops to offscreen.
 - Modify: `src/background.ts` — proxy chat events offscreen ↔ bridge; pin offscreen with `chrome.runtime.connect` for the duration of a chat session (MV3 30 s idle timeout otherwise).
 - Modify: `src/offscreen.ts` — register chat-runner; manage runner lifecycle **without** touching `window.__shuvgeistTtsController` (TTS ownership contract still applies).
-- Modify: `src/sidepanel.ts` — passive indicator when chat is running headlessly; no UI hijack.
+- Modify: `src/sidepanel.ts` — consume the shared runtime factory and show a passive indicator when chat is running headlessly; no UI hijack.
 - Modify: `src/storage/sessions.ts` — chat sessions alongside sidepanel sessions.
 - Modify: `skills/shuvgeist/SKILL.md` + sibling.
 - Modify: `README.md` — make `chat` the headline command.
@@ -614,6 +707,7 @@ export type ChatStreamEvent =
 
 ### Acceptance
 
+- [ ] Sidepanel still passes existing session/tool/model tests after the shared runtime extraction.
 - [ ] `shuvgeist chat "ping"` returns text without invoking a tool.
 - [ ] `shuvgeist chat "open google and search 'site:rust-lang.org cdp'"` drives the real browser through google.com → results.
 - [ ] Ctrl-C in interactive mode cancels in-flight turn cleanly; no orphaned offscreen runner.
@@ -633,7 +727,7 @@ export type ChatStreamEvent =
 
 ## Tier 2.2–2.4 — frontend devtools (target: 1.4.0)
 
-Bundle these into one minor version because they share the debugger CDP plumbing.
+Bundle these into one minor version because they share the debugger CDP plumbing. Any additional `DebuggerManager` API work remains HIGH-risk: run impact analysis, isolate helper additions, and regression-test network/perf/device/debugger users before landing React/vitals/init-script changes.
 
 ### 2.2 React introspection — Phase 1
 
@@ -770,10 +864,10 @@ Promote into a tier when one of these blocks a real user.
 
 ## Open questions (resolve before each tier starts)
 
-1. **Tier 0:** `Page.startScreencast` active-tab dependency unknown until live-tested. Plan assumes the active-tab check can be dropped after testing; if it can't, keep an opt-in guard.
-2. **Tier 1.3:** Tab labels do not persist across `serve` restart (matches agent-browser). Revisit if users complain.
+1. **Tier 0:** `Page.startScreencast` active-tab dependency unknown until live-tested. Plan assumes the active-tab check can be dropped after testing; if it can't, keep an opt-in guard and document the limitation before release.
+2. **Tier 1.3:** Tab registry is extension-owned; labels persist through MV3 service-worker suspension via `chrome.storage.session` but reset on extension reload/browser restart. This intentionally differs from agent-browser's serve-restart reset semantics.
 3. **Tier 2.1:** AI Gateway env var fallback ordering — provider preset wins over `AI_GATEWAY_API_KEY` (recon Q1).
-4. **Tier 2.1:** React hook MIT license attribution lives at `src/tools/react/LICENSE` + top-level `THIRD_PARTY_LICENSES.md` (recon Q3).
+4. **Tier 2.2:** React hook MIT license attribution lives at `src/tools/react/LICENSE` + top-level `THIRD_PARTY_LICENSES.md` (recon Q3).
 5. **Tier 1.1:** Doctor probes run network/provider probes in parallel; emit results in stable order (recon Q4).
 6. **All tiers:** Bridge protocol minor version bumps per feature; older CLI ↔ newer bridge surfaces a clean error (recon Q5 / CDC-1).
 
@@ -791,8 +885,9 @@ file /tmp/x.webm
 ffprobe -hide_banner /tmp/x.webm
 
 # Tier 1
-pnpm install
-pnpm run check
+npm install
+./check.sh
+npm run schema:check  # once schema support lands
 shuvgeist doctor
 shuvgeist tab new --label foo https://example.com
 shuvgeist screenshot --tab foo --out /tmp/foo.png && test -f /tmp/foo.png

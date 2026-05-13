@@ -8,9 +8,10 @@
 
 - `shuvgeist launch` now defaults to an isolated, persistent, per-browser user-data-dir under `~/.shuvgeist/profile/<browser-name>` so a spawned browser does not collide with an already-open instance of the same browser using its default profile (the most common reason `launch` previously appeared to do nothing or to time out waiting for extension registration). Two new flags expose the policy: `--user-data-dir <path>` overrides the default with an explicit directory, and `--use-default-profile` skips `--user-data-dir` entirely so the launched browser shares the user's existing profile, logins, and extensions. The default's persistence means logins inside Shuvgeist's managed profile survive across runs, so `launch` does not re-prompt every time.
 
-- `shuvgeist record` captures short tab repro videos through `chrome.tabCapture` and the existing offscreen document. `record start --out file.webm` streams MediaRecorder chunks to the CLI, `record stop` terminates the active recording from another terminal, and `record status --json` reports active recording metadata without exposing media bytes. Recording is gated behind sensitive bridge access and enforces duration/byte ceilings.
 
 ### Changed
+
+- `shuvgeist record` now uses CDP `Page.startScreencast` with CLI-side ffmpeg encoding instead of `chrome.tabCapture`, adds protocol-version handshakes for CLI/server/extension compatibility, and reports frames, source bytes, encoded size, and output path in JSON summaries.
 
 - `shuvgeist screenshot` now returns `cssWidth`, `cssHeight`, `imageWidth`, `imageHeight`, `devicePixelRatio`, and `scale` in `--json` mode, and writes a sibling `viewport.json` next to the image when `--out` is supplied so HiDPI annotation tools can convert CSS-pixel coordinates to image pixels. Add `--no-viewport-json` to suppress. (#4)
 
@@ -24,7 +25,7 @@
 
 ### Fixed
 
-- `shuvgeist record start` now falls back to Chrome 116+'s offscreen-document stream-id behavior when `chrome.runtime.getContexts()` does not expose a `tabId` for the offscreen document, instead of failing with "Offscreen document tab id is unavailable for tabCapture".
+- `shuvgeist record start` no longer depends on Chrome's activeTab invocation state for tabCapture, fixing CLI-started recordings on already-authenticated tabs. Recording now requires `ffmpeg` on PATH for WebM encoding.
 
 - `shuvgeist repl` and `shuvgeist eval` now honor `--tab-id` and `--frame-id` and execute against the targeted tab without changing the active tab. Previously these flags were silently ignored or dropped before reaching the runtime. (#3)
 

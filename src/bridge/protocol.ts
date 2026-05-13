@@ -6,6 +6,33 @@
  */
 
 // ---------------------------------------------------------------------------
+// Protocol versioning
+// ---------------------------------------------------------------------------
+
+export const BRIDGE_PROTOCOL_VERSION = 2;
+export const BRIDGE_PROTOCOL_MIN_VERSION = 2;
+
+export function isBridgeProtocolCompatible(protocolVersion?: number, minProtocolVersion?: number): boolean {
+	return (
+		typeof protocolVersion === "number" &&
+		typeof minProtocolVersion === "number" &&
+		protocolVersion >= BRIDGE_PROTOCOL_MIN_VERSION &&
+		minProtocolVersion <= BRIDGE_PROTOCOL_VERSION
+	);
+}
+
+export function formatBridgeProtocolMismatch(
+	peer: string,
+	protocolVersion?: number,
+	minProtocolVersion?: number,
+): string {
+	const version = typeof protocolVersion === "number" ? String(protocolVersion) : "missing";
+	const range =
+		typeof minProtocolVersion === "number" ? `${minProtocolVersion}-${protocolVersion ?? "unknown"}` : "missing";
+	return `Bridge protocol mismatch: ${peer} ${version}, server supports ${BRIDGE_PROTOCOL_MIN_VERSION}-${BRIDGE_PROTOCOL_VERSION}. Rebuild or restart shuvgeist.`;
+}
+
+// ---------------------------------------------------------------------------
 // Capabilities
 // ---------------------------------------------------------------------------
 
@@ -78,6 +105,8 @@ export interface ExtensionRegistration {
 	type: "register";
 	role: "extension";
 	token: string;
+	protocolVersion: number;
+	appVersion: string;
 	windowId: number;
 	sessionId?: string;
 	capabilities: BridgeCapability[];
@@ -87,6 +116,8 @@ export interface CliRegistration {
 	type: "register";
 	role: "cli";
 	token: string;
+	protocolVersion: number;
+	appVersion: string;
 	name?: string;
 }
 
@@ -175,6 +206,7 @@ export type BridgeEventType =
 	| "session_message"
 	| "session_tool"
 	| "session_run_state"
+	| "record_frame"
 	| "record_chunk";
 
 export interface BridgeEvent {
@@ -220,7 +252,7 @@ export interface ReplParams extends TargetedBridgeParams {
 	code: string;
 }
 
-export interface ScreenshotParams {
+export interface ScreenshotParams extends TargetedBridgeParams {
 	maxWidth?: number;
 }
 
@@ -238,6 +270,8 @@ export interface SelectElementParams {
 
 export interface TargetedBridgeParams {
 	tabId?: number;
+	tabRef?: string;
+	windowId?: number;
 	frameId?: number;
 }
 
@@ -347,20 +381,20 @@ export type RecordOutcome =
 	| "stopped_tab_closed"
 	| "stopped_error";
 
-export interface RecordStartParams {
-	tabId?: number;
+export interface RecordStartParams extends TargetedBridgeParams {
 	maxDurationMs?: number;
 	videoBitsPerSecond?: number;
 	mimeType?: string;
+	fps?: number;
+	quality?: number;
+	maxWidth?: number;
+	maxHeight?: number;
+	everyNthFrame?: number;
 }
 
-export interface RecordStopParams {
-	tabId?: number;
-}
+export interface RecordStopParams extends TargetedBridgeParams {}
 
-export interface RecordStatusParams {
-	tabId?: number;
-}
+export interface RecordStatusParams extends TargetedBridgeParams {}
 
 export interface RecordStartResult {
 	ok: true;
@@ -381,7 +415,10 @@ export interface RecordStopResult {
 	durationMs: number;
 	mimeType: string;
 	sizeBytes: number;
+	sourceBytes?: number;
+	encodedSizeBytes?: number;
 	chunkCount: number;
+	frameCount?: number;
 	outcome: RecordOutcome;
 }
 
@@ -395,9 +432,34 @@ export type RecordStatusResult =
 			mimeType: string;
 			durationMs: number;
 			sizeBytes: number;
+			sourceBytes?: number;
+			chunkCount?: number;
+			frameCount?: number;
+			fps?: number;
 			lastError?: string;
 	  };
 
+export interface RecordFrameEventData {
+	recordingId: string;
+	tabId: number;
+	seq: number;
+	format: "jpeg" | "png";
+	dataBase64: string;
+	capturedAtMs: number;
+	metadata?: {
+		timestamp?: number;
+		deviceWidth?: number;
+		deviceHeight?: number;
+		pageScaleFactor?: number;
+		offsetTop?: number;
+		scrollOffsetX?: number;
+		scrollOffsetY?: number;
+	};
+	final?: boolean;
+	summary?: RecordStopResult;
+}
+
+/** Legacy MediaRecorder chunk event kept during the 1.1.x → 1.2.x transition. */
 export interface RecordChunkEventData {
 	recordingId: string;
 	tabId: number;
@@ -617,6 +679,9 @@ export interface PerfTraceResult {
 
 export interface BridgeServerStatus {
 	ok: true;
+	protocolVersion: number;
+	minProtocolVersion: number;
+	serverVersion: string;
 	extension:
 		| {
 				connected: true;
@@ -624,6 +689,8 @@ export interface BridgeServerStatus {
 				sessionId?: string;
 				capabilities?: string[];
 				remoteAddress?: string;
+				protocolVersion?: number;
+				appVersion?: string;
 		  }
 		| { connected: false };
 	clients: {
@@ -744,6 +811,7 @@ export interface BridgeServerConfig {
 	host: string;
 	port: number;
 	token: string;
+	serverVersion?: string;
 	otel?: {
 		enabled?: boolean;
 		ingestUrl?: string;
@@ -815,6 +883,11 @@ export const BridgeDefaults = {
 	CAPTURE_TIMEOUT_MS: 0,
 	TRACE_TIMEOUT_MS: 120_000,
 	RECORD_DEFAULT_MAX_DURATION_MS: 30_000,
+	RECORD_DEFAULT_FPS: 12,
+	RECORD_DEFAULT_JPEG_QUALITY: 70,
+	RECORD_DEFAULT_MAX_WIDTH: 1280,
+	RECORD_MAX_FPS: 30,
+	RECORD_MIN_FPS: 1,
 	RECORD_HARD_MAX_DURATION_MS: 120_000,
 	RECORD_HARD_MAX_BYTES: 64 * 1024 * 1024,
 	RECORD_TIMESLICE_MS: 1000,

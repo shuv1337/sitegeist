@@ -11,6 +11,7 @@ export interface CliFlags {
 	timeout?: string;
 	out?: string;
 	maxWidth?: string;
+	maxHeight?: string;
 	writeFiles?: string;
 	last?: string;
 	role?: string;
@@ -41,6 +42,8 @@ export interface CliFlags {
 	maxDuration?: string;
 	videoBitrate?: string;
 	mimeType?: string;
+	fps?: string;
+	quality?: string;
 	browser?: string;
 	extensionPath?: string;
 	profile?: string;
@@ -94,6 +97,18 @@ function parseNumberFlag(value: string | undefined): number | undefined {
 	if (!value) return undefined;
 	const parsed = Number.parseInt(value, 10);
 	return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parsePositiveIntegerFlag(
+	name: string,
+	value: string | undefined,
+): { ok: true; value?: number } | { ok: false; message: string } {
+	if (!value) return { ok: true };
+	const parsed = Number.parseInt(value, 10);
+	if (!Number.isFinite(parsed) || parsed <= 0) {
+		return { ok: false, message: `${name} must be a positive integer` };
+	}
+	return { ok: true, value: parsed };
 }
 
 function applyTargetFlags(flags: CliFlags, params: Record<string, unknown>): void {
@@ -631,7 +646,41 @@ export function createCommandPlan(
 					}
 					params.videoBitsPerSecond = videoBitsPerSecond;
 				}
-				if (flags.mimeType) params.mimeType = flags.mimeType;
+				const fps = parsePositiveIntegerFlag("--fps", flags.fps);
+				if (!fps.ok) return { kind: "usage-error", message: fps.message };
+				if (typeof fps.value === "number") {
+					if (fps.value < BridgeDefaults.RECORD_MIN_FPS || fps.value > BridgeDefaults.RECORD_MAX_FPS) {
+						return {
+							kind: "usage-error",
+							message: `--fps must be between ${BridgeDefaults.RECORD_MIN_FPS} and ${BridgeDefaults.RECORD_MAX_FPS}`,
+						};
+					}
+					params.fps = fps.value;
+				}
+				const quality = parsePositiveIntegerFlag("--quality", flags.quality);
+				if (!quality.ok) return { kind: "usage-error", message: quality.message };
+				if (typeof quality.value === "number") {
+					if (quality.value < 1 || quality.value > 100) {
+						return { kind: "usage-error", message: "--quality must be between 1 and 100" };
+					}
+					params.quality = quality.value;
+				}
+				const maxWidth = parsePositiveIntegerFlag("--max-width", flags.maxWidth);
+				if (!maxWidth.ok) return { kind: "usage-error", message: maxWidth.message };
+				if (typeof maxWidth.value === "number") params.maxWidth = maxWidth.value;
+				const maxHeight = parsePositiveIntegerFlag("--max-height", flags.maxHeight);
+				if (!maxHeight.ok) return { kind: "usage-error", message: maxHeight.message };
+				if (typeof maxHeight.value === "number") params.maxHeight = maxHeight.value;
+				if (flags.mimeType) {
+					const allowed = new Set(["video/webm", "video/webm;codecs=vp8", "video/webm;codecs=vp9"]);
+					if (!allowed.has(flags.mimeType.toLowerCase())) {
+						return {
+							kind: "usage-error",
+							message: "--mime-type must be video/webm, video/webm;codecs=vp8, or video/webm;codecs=vp9",
+						};
+					}
+					params.mimeType = flags.mimeType;
+				}
 				return {
 					kind: "record",
 					action,

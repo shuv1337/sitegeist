@@ -3,7 +3,7 @@
 	"minimum_chrome_version": "141",
 	"name": "Shuvgeist",
 	"description": "Your clanker for the web - Research, automate, create",
-	"version": "1.1.11",
+	"version": "1.1.12",
 	"action": {
 		"default_title": "Click to open side panel"
 	},
@@ -40,7 +40,6 @@
 		"cookies",
 		"declarativeNetRequest",
 		"offscreen",
-		"tabCapture",
 		"alarms"
 	],
 	"host_permissions": [

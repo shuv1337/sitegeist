@@ -78,6 +78,7 @@ Current CLI surface:
 - deterministic workflows: `workflow run`, `workflow validate`
 - semantic page inspection: `snapshot`, `locate`, `ref`, `frame`
 - debugger-backed diagnostics: `network`, `device`, `perf`
+- video repro capture: `record start`, `record stop`, `record status` using CDP screencast plus CLI-side ffmpeg encoding
 - session control: `session`, `inject`, `new-session`, `set-model`, `artifacts`
 
 Run `shuvgeist --help` for the full command reference.
@@ -155,6 +156,8 @@ npm run build       # extension -> dist-chrome/
 npm run build:cli   # CLI -> dist-cli/shuvgeist.mjs
 ```
 
+Recording from the CLI requires `ffmpeg` on PATH. The current recorder is video-only (no audio) and keeps the existing sensitive-browser-access gate.
+
 Load `dist-chrome/` as an unpacked extension.
 
 ## Quick start
@@ -185,6 +188,7 @@ shuvgeist status
 shuvgeist navigate "https://example.com"
 shuvgeist tabs --json
 shuvgeist screenshot --out page.png
+shuvgeist record start --out /tmp/example.webm --max-duration 5s
 shuvgeist repl 'return await browserjs(() => document.title)'
 shuvgeist snapshot --json
 shuvgeist locate text "Sign in" --json

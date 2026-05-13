@@ -16,6 +16,8 @@ import { WebSocket, WebSocketServer } from "ws";
 import { bridgeLog, generateConnectionId, type LogFields } from "./logging.js";
 import {
 	type AbortMessage,
+	BRIDGE_PROTOCOL_MIN_VERSION,
+	BRIDGE_PROTOCOL_VERSION,
 	BridgeDefaults,
 	type BridgeEvent,
 	type BridgeMethod,
@@ -25,6 +27,8 @@ import {
 	type BridgeServerConfig,
 	type BridgeServerStatus,
 	ErrorCodes,
+	formatBridgeProtocolMismatch,
+	isBridgeProtocolCompatible,
 	isWriteMethod,
 	type RegistrationMessage,
 } from "./protocol.js";
@@ -44,6 +48,8 @@ interface ClientInfo {
 	windowId?: number;
 	sessionId?: string;
 	capabilities?: string[];
+	protocolVersion?: number;
+	appVersion?: string;
 	/** CLI-specific metadata. */
 	name?: string;
 }
@@ -62,6 +68,13 @@ interface PendingRequest {
 	span?: BridgeTelemetrySpan;
 }
 
+interface ActiveRecordingLease {
+	cliConnectionId: string;
+	recordingId: string;
+	tabId: number;
+	startedAt: number;
+}
+
 // ---------------------------------------------------------------------------
 // Server
 // ---------------------------------------------------------------------------
@@ -76,6 +89,7 @@ export class BridgeServer {
 	private nextRelayRequestId = 1;
 	private writerCliConnectionId?: string;
 	private writerSessionId?: string;
+	private readonly activeRecordingLeases = new Map<string, ActiveRecordingLease>();
 	private httpServer?: ReturnType<typeof createServer>;
 	private wss?: WebSocketServer;
 
@@ -224,6 +238,7 @@ export class BridgeServer {
 		this.clients.clear();
 		this.activeExtension = null;
 		this.pendingRequests.clear();
+		this.activeRecordingLeases.clear();
 		this.writerCliConnectionId = undefined;
 		this.writerSessionId = undefined;
 
@@ -310,6 +325,27 @@ export class BridgeServer {
 			return;
 		}
 
+		if (!isBridgeProtocolCompatible(msg.protocolVersion, msg.protocolVersion)) {
+			const error = formatBridgeProtocolMismatch(
+				msg.role === "cli" ? "CLI" : "extension",
+				msg.protocolVersion,
+				msg.protocolVersion,
+			);
+			bridgeLog("warn", "protocol mismatch", {
+				...fields,
+				outcome: "rejected",
+				clientProtocolVersion: msg.protocolVersion,
+				clientAppVersion: msg.appVersion,
+			});
+			this.sendJson(client.ws, {
+				type: "register_result",
+				ok: false,
+				error,
+			});
+			client.ws.close(4009, "Protocol mismatch");
+			return;
+		}
+
 		if (msg.role === "extension") {
 			// Handle existing extension connection
 			if (this.activeExtension && this.activeExtension.ws.readyState === WebSocket.OPEN) {
@@ -346,6 +382,8 @@ export class BridgeServer {
 			client.windowId = msg.windowId;
 			client.sessionId = msg.sessionId;
 			client.capabilities = msg.capabilities;
+			client.protocolVersion = msg.protocolVersion;
+			client.appVersion = msg.appVersion;
 			this.activeExtension = client;
 
 			bridgeLog("info", "extension registered", {
@@ -365,6 +403,8 @@ export class BridgeServer {
 			client.role = "cli";
 			client.registered = true;
 			client.name = msg.name;
+			client.protocolVersion = msg.protocolVersion;
+			client.appVersion = msg.appVersion;
 
 			bridgeLog("info", "cli registered", {
 				...fields,
@@ -534,6 +574,9 @@ export class BridgeServer {
 		} else {
 			pending.span?.end("ok");
 		}
+		if (!res.error) {
+			this.updateRecordingLeasesFromResponse(pending, res);
+		}
 		void this.telemetry?.flush();
 
 		if (pending.cliWs.readyState === WebSocket.OPEN) {
@@ -541,6 +584,49 @@ export class BridgeServer {
 				...res,
 				id: pending.clientRequestId,
 			});
+		}
+	}
+
+	private stopRecordingLeasesForCli(cliConnectionId: string): void {
+		for (const [recordingId, lease] of this.activeRecordingLeases) {
+			if (lease.cliConnectionId !== cliConnectionId) continue;
+			this.activeRecordingLeases.delete(recordingId);
+			if (this.activeExtension && this.activeExtension.ws.readyState === WebSocket.OPEN) {
+				const syntheticStop: BridgeRequest = {
+					id: this.nextRelayRequestId++,
+					method: "record_stop",
+					params: { tabId: lease.tabId },
+				};
+				this.sendJson(this.activeExtension.ws, syntheticStop);
+			}
+			bridgeLog("info", "sent synthetic record_stop for disconnected cli", {
+				role: "server",
+				outcome: "aborted",
+				cliConnectionId,
+				recordingId: lease.recordingId,
+				tabId: lease.tabId,
+			});
+		}
+	}
+
+	private updateRecordingLeasesFromResponse(pending: PendingRequest, res: BridgeResponse): void {
+		if (pending.method === "record_start") {
+			const result = res.result as { recordingId?: unknown; tabId?: unknown } | undefined;
+			if (typeof result?.recordingId === "string" && typeof result.tabId === "number") {
+				this.activeRecordingLeases.set(result.recordingId, {
+					cliConnectionId: pending.cliConnectionId,
+					recordingId: result.recordingId,
+					tabId: result.tabId,
+					startedAt: Date.now(),
+				});
+			}
+			return;
+		}
+		if (pending.method === "record_stop") {
+			const result = res.result as { recordingId?: unknown } | undefined;
+			if (typeof result?.recordingId === "string") {
+				this.activeRecordingLeases.delete(result.recordingId);
+			}
 		}
 	}
 
@@ -553,12 +639,23 @@ export class BridgeServer {
 			role: "server",
 			event: event.event,
 		} as LogFields);
-		if (event.event === "record_chunk" && !this.activeExtension?.capabilities?.includes("record_start")) {
-			bridgeLog("warn", "record chunk event rejected because recording capability is disabled", {
+		if (
+			(event.event === "record_frame" || event.event === "record_chunk") &&
+			!this.activeExtension?.capabilities?.includes("record_start")
+		) {
+			bridgeLog("warn", "recording event rejected because recording capability is disabled", {
 				role: "server",
 				outcome: "rejected",
+				event: event.event,
 			});
 			return;
+		}
+		if ((event.event === "record_frame" || event.event === "record_chunk") && event.data) {
+			const recordingId = typeof event.data.recordingId === "string" ? event.data.recordingId : undefined;
+			const final = event.data.final === true;
+			if (recordingId && final) {
+				this.activeRecordingLeases.delete(recordingId);
+			}
 		}
 		if (event.event === "session_changed") {
 			const sessionId =
@@ -594,6 +691,7 @@ export class BridgeServer {
 			this.activeExtension = null;
 			this.writerCliConnectionId = undefined;
 			this.writerSessionId = undefined;
+			this.activeRecordingLeases.clear();
 			bridgeLog("info", "extension disconnected", { ...fields, windowId: client.windowId });
 
 			for (const pending of this.pendingRequests.values()) {
@@ -628,6 +726,8 @@ export class BridgeServer {
 				this.writerSessionId = undefined;
 			}
 			bridgeLog("info", "cli disconnected", { ...fields, name: client.name });
+
+			this.stopRecordingLeasesForCli(client.connectionId);
 
 			for (const [relayRequestId, pending] of this.pendingRequests) {
 				if (pending.cliConnectionId === client.connectionId) {
@@ -683,6 +783,9 @@ export class BridgeServer {
 		const ext = this.activeExtension;
 		const status: BridgeServerStatus = {
 			ok: true,
+			protocolVersion: BRIDGE_PROTOCOL_VERSION,
+			minProtocolVersion: BRIDGE_PROTOCOL_MIN_VERSION,
+			serverVersion: this.config.serverVersion ?? "dev",
 			extension: ext
 				? {
 						connected: true,
@@ -690,6 +793,8 @@ export class BridgeServer {
 						sessionId: ext.sessionId,
 						capabilities: ext.capabilities,
 						remoteAddress: ext.remoteAddress,
+						protocolVersion: ext.protocolVersion,
+						appVersion: ext.appVersion,
 					}
 				: { connected: false },
 			clients: {

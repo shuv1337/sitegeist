@@ -22,7 +22,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { parseArgs } from "node:util";
@@ -40,6 +40,7 @@ import {
 } from "./cli-core.js";
 import { closeBrowser, type LaunchOptions, launchBrowser, setupForegroundHandlers } from "./launcher.js";
 import {
+	BRIDGE_PROTOCOL_VERSION,
 	BridgeDefaults,
 	type BridgeEvent,
 	type BridgeMethod,
@@ -49,13 +50,17 @@ import {
 	type BridgeScreenshotResult,
 	type BridgeServerStatus,
 	type CliConfigFile,
+	formatBridgeProtocolMismatch,
+	isBridgeProtocolCompatible,
 	type RecordChunkEventData,
+	type RecordFrameEventData,
 	type RecordStartResult,
 	type RecordStopResult,
 	type RegisterResult,
 	type SessionHistoryResult,
 	type WorkflowRunResultWire,
 } from "./protocol.js";
+import { assertFfmpegAvailable, FfmpegWebmEncoder } from "./recording/ffmpeg-encoder.js";
 import { BridgeServer } from "./server.js";
 import { BridgeTelemetry } from "./telemetry.js";
 import { formatWorkflowValidationErrors, validateWorkflowDefinition } from "./workflow-schema.js";
@@ -147,6 +152,8 @@ function sendRequest(
 					type: "register",
 					role: "cli",
 					token,
+					protocolVersion: BRIDGE_PROTOCOL_VERSION,
+					appVersion: VERSION,
 					name: "shuvgeist-cli",
 				}),
 			);
@@ -265,11 +272,28 @@ function printRecordStopSummary(result: RecordStopResult, jsonMode: boolean, out
 	console.log(`Recording stopped: ${result.outcome}`);
 	console.log(`  File: ${outPath ?? "(not written by this command)"}`);
 	console.log(`  Duration: ${result.durationMs}ms`);
-	console.log(`  Size: ${result.sizeBytes} bytes`);
-	console.log(`  Chunks: ${result.chunkCount}`);
+	console.log(`  Frames: ${result.frameCount ?? result.chunkCount}`);
+	console.log(`  Source bytes: ${result.sourceBytes ?? result.sizeBytes}`);
+	if (typeof result.encodedSizeBytes === "number") {
+		console.log(`  Encoded size: ${result.encodedSizeBytes} bytes`);
+	}
 }
 
-function isRecordChunkEvent(event: BridgeEvent): event is BridgeEvent & { data: RecordChunkEventData } {
+function isRecordFrameEvent(event: BridgeEvent): event is BridgeEvent & { data: RecordFrameEventData } {
+	const data = event.data as Partial<RecordFrameEventData> | undefined;
+	return (
+		event.event === "record_frame" &&
+		data !== undefined &&
+		typeof data.recordingId === "string" &&
+		typeof data.tabId === "number" &&
+		typeof data.seq === "number" &&
+		(data.format === "jpeg" || data.format === "png") &&
+		typeof data.dataBase64 === "string" &&
+		typeof data.capturedAtMs === "number"
+	);
+}
+
+function isLegacyRecordChunkEvent(event: BridgeEvent): event is BridgeEvent & { data: RecordChunkEventData } {
 	const data = event.data as Partial<RecordChunkEventData> | undefined;
 	return (
 		event.event === "record_chunk" &&
@@ -307,11 +331,14 @@ async function fetchBridgeStatus(flags: { url?: string; host?: string; port?: st
 			throw new Error(`Status request failed: HTTP ${response.status}`);
 		}
 		const status = (await response.json()) as BridgeServerStatus;
+		assertBridgeStatusProtocol(status);
 		if (jsonMode) {
 			console.log(JSON.stringify(status, null, 2));
 		} else {
 			console.log(`CLI version: ${VERSION}`);
 			console.log(`Bridge: ${statusUrl}`);
+			console.log(`Bridge version: ${status.serverVersion ?? "unknown"}`);
+			console.log(`Protocol: ${status.minProtocolVersion ?? "?"}-${status.protocolVersion ?? "?"}`);
 			console.log(`Extension connected: ${status.extension.connected ? "yes" : "no"}`);
 			if (status.extension.connected) {
 				// Defensive: never present `0` (or any non-positive id) as a healthy
@@ -325,6 +352,8 @@ async function fetchBridgeStatus(flags: { url?: string; host?: string; port?: st
 						: "unavailable";
 				console.log(`Window ID: ${windowIdDisplay}`);
 				console.log(`Session ID: ${status.extension.sessionId ?? "unknown"}`);
+				console.log(`Extension version: ${status.extension.appVersion ?? "unknown"}`);
+				console.log(`Extension protocol: ${status.extension.protocolVersion ?? "unknown"}`);
 				console.log(`Capabilities: ${(status.extension.capabilities || []).join(", ") || "none"}`);
 				console.log(`Extension address: ${status.extension.remoteAddress ?? "unknown"}`);
 			}
@@ -374,6 +403,7 @@ async function cmdServe(args: string[]): Promise<void> {
 		host: values.host!,
 		port: Number.parseInt(values.port!, 10),
 		token,
+		serverVersion: VERSION,
 		otel: {
 			enabled: telemetry?.getExportState().state !== "disabled",
 			ingestUrl: process.env.SHUVGEIST_OTEL_INGEST_URL || configFile.otel?.ingestUrl || "http://localhost:3474",
@@ -445,12 +475,16 @@ async function cmdScreenshot(flags: {
 	json?: boolean;
 	out?: string;
 	maxWidth?: string;
+	tabId?: string;
+	frameId?: string;
 	timeout?: string;
 	noViewportJson?: boolean;
 }): Promise<void> {
 	const jsonMode = flags.json || false;
 	const params: Record<string, unknown> = {};
 	if (flags.maxWidth) params.maxWidth = Number.parseInt(flags.maxWidth, 10);
+	if (flags.tabId) params.tabId = Number.parseInt(flags.tabId, 10);
+	if (flags.frameId) params.frameId = Number.parseInt(flags.frameId, 10);
 	try {
 		const response = await cmdOneShot("screenshot", params, flags, BridgeDefaults.SLOW_REQUEST_TIMEOUT_MS);
 		if (response.error) {
@@ -560,6 +594,13 @@ async function cmdRecord(
 		printError("record start requires --out", jsonMode);
 		process.exit(1);
 	}
+	try {
+		assertFfmpegAvailable();
+	} catch (error) {
+		printError(error instanceof Error ? error.message : String(error), jsonMode);
+		process.exit(1);
+	}
+
 	const configFile = readConfigFile();
 	const resolved = resolveConfig(flags, process.env, configFile, getConfigPath());
 	if (!resolved.ok) {
@@ -568,12 +609,14 @@ async function cmdRecord(
 	}
 	const { url, token } = resolved;
 	const outPath = flags.out;
-	const output = createWriteStream(outPath);
 	const requestId = generateRequestId();
 	let recordingId: string | undefined;
 	let settled = false;
 	let started = false;
+	let stopRequested = false;
 	let timeout: ReturnType<typeof setTimeout> | undefined;
+	let encoder: FfmpegWebmEncoder | undefined;
+	let encoderQueue = Promise.resolve();
 	const telemetry = resolveCliTelemetry(configFile);
 	const span = telemetry?.startSpan("bridge.cli.record_start", {
 		kind: "client",
@@ -595,29 +638,35 @@ async function cmdRecord(
 		settled = true;
 		if (timeout) clearTimeout(timeout);
 		ws.close();
-		output.end(() => {
-			void telemetry?.flush().finally(() => process.exit(code));
-		});
+		void telemetry?.flush().finally(() => process.exit(code));
 	};
 
 	const fail = (message: string, code: number): void => {
+		encoder?.abort();
 		span?.recordError(new Error(message));
 		span?.end("error");
 		printError(message, jsonMode);
 		finish(code);
 	};
 
-	const stopOnSignal = (): void => {
-		if (!recordingId || ws.readyState !== WebSocket.OPEN) {
-			finish(130);
-			return;
-		}
+	const sendStop = (): void => {
+		if (!recordingId || ws.readyState !== WebSocket.OPEN || stopRequested) return;
+		stopRequested = true;
 		const stopRequest: BridgeRequest = {
 			id: generateRequestId(),
 			method: "record_stop",
 			params: params.tabId ? { tabId: params.tabId } : {},
 		};
 		ws.send(JSON.stringify(stopRequest));
+	};
+
+	const stopOnSignal = (): void => {
+		if (!recordingId || ws.readyState !== WebSocket.OPEN) {
+			encoder?.abort();
+			finish(130);
+			return;
+		}
+		sendStop();
 	};
 	process.once("SIGINT", stopOnSignal);
 
@@ -629,7 +678,16 @@ async function cmdRecord(
 	}
 
 	ws.on("open", () => {
-		ws.send(JSON.stringify({ type: "register", role: "cli", token, name: "shuvgeist-cli-record" }));
+		ws.send(
+			JSON.stringify({
+				type: "register",
+				role: "cli",
+				token,
+				protocolVersion: BRIDGE_PROTOCOL_VERSION,
+				appVersion: VERSION,
+				name: "shuvgeist-cli-record",
+			}),
+		);
 	});
 
 	ws.on("message", (data: Buffer | string) => {
@@ -652,6 +710,13 @@ async function cmdRecord(
 			const result = response.result as RecordStartResult;
 			recordingId = result.recordingId;
 			started = true;
+			encoder = new FfmpegWebmEncoder();
+			encoder.start({
+				outPath,
+				fps: typeof params.fps === "number" ? params.fps : BridgeDefaults.RECORD_DEFAULT_FPS,
+				mimeType: result.mimeType,
+				videoBitsPerSecond: result.videoBitsPerSecond,
+			});
 			span?.setAttributes({
 				"record.recording_id": result.recordingId,
 				"record.tab_id": result.tabId,
@@ -664,25 +729,47 @@ async function cmdRecord(
 			}
 			return;
 		}
-		if (msg.type === "event") {
-			const event = msg as BridgeEvent;
-			if (!isRecordChunkEvent(event)) return;
+		if (msg.type !== "event") return;
+		const event = msg as BridgeEvent;
+		if (isRecordFrameEvent(event)) {
 			if (recordingId && event.data.recordingId !== recordingId) return;
 			if (!recordingId) recordingId = event.data.recordingId;
-			if (event.data.chunkBase64) {
-				output.write(Buffer.from(event.data.chunkBase64, "base64"));
+			if (event.data.dataBase64 && encoder) {
+				const frame = Buffer.from(event.data.dataBase64, "base64");
+				encoderQueue = encoderQueue
+					.then(() => encoder?.pushFrame(frame, event.data.capturedAtMs))
+					.then(() => undefined);
 			}
 			if (event.data.final && event.data.summary) {
-				span?.setAttributes({
-					"record.duration_ms": event.data.summary.durationMs,
-					"record.size_bytes": event.data.summary.sizeBytes,
-					"record.chunk_count": event.data.summary.chunkCount,
-					"record.outcome": event.data.summary.outcome,
-				});
-				span?.end(event.data.summary.outcome === "stopped_error" ? "error" : "ok");
-				printRecordStopSummary(event.data.summary, jsonMode, outPath);
-				finish(event.data.summary.outcome === "stopped_error" ? 1 : 0);
+				const summary = event.data.summary;
+				encoderQueue = encoderQueue
+					.then(async () => {
+						if (!encoder) return summary;
+						const finished = await encoder.finish(Date.parse(summary.endedAt));
+						return {
+							...summary,
+							encodedSizeBytes: finished.encodedSizeBytes,
+						};
+					})
+					.then((finalSummary) => {
+						span?.setAttributes({
+							"record.duration_ms": finalSummary.durationMs,
+							"record.size_bytes": finalSummary.sizeBytes,
+							"record.source_bytes": finalSummary.sourceBytes,
+							"record.encoded_size_bytes": finalSummary.encodedSizeBytes,
+							"record.frame_count": finalSummary.frameCount,
+							"record.outcome": finalSummary.outcome,
+						});
+						span?.end(finalSummary.outcome === "stopped_error" ? "error" : "ok");
+						printRecordStopSummary(finalSummary, jsonMode, outPath);
+						finish(finalSummary.outcome === "stopped_error" ? 1 : 0);
+					})
+					.catch((error: unknown) => fail(error instanceof Error ? error.message : String(error), 1));
 			}
+			return;
+		}
+		if (isLegacyRecordChunkEvent(event)) {
+			fail("Bridge sent legacy record_chunk data; restart the extension to use debugger screencast recording.", 3);
 		}
 	});
 
@@ -693,6 +780,7 @@ async function cmdRecord(
 	ws.on("close", () => {
 		process.removeListener("SIGINT", stopOnSignal);
 		if (!settled) {
+			encoder?.abort();
 			fail("Connection closed before recording completed", 3);
 		}
 	});
@@ -738,7 +826,16 @@ async function cmdSession(flags: {
 	const ws = new WebSocket(url);
 
 	ws.on("open", () => {
-		ws.send(JSON.stringify({ type: "register", role: "cli", token, name: "shuvgeist-cli-follow" }));
+		ws.send(
+			JSON.stringify({
+				type: "register",
+				role: "cli",
+				token,
+				protocolVersion: BRIDGE_PROTOCOL_VERSION,
+				appVersion: VERSION,
+				name: "shuvgeist-cli-follow",
+			}),
+		);
 	});
 
 	ws.on("message", (data: Buffer | string) => {
@@ -1011,6 +1108,23 @@ async function fetchStatusSnapshot(statusUrl: string): Promise<BridgeServerStatu
 	}
 }
 
+function assertBridgeStatusProtocol(status: BridgeServerStatus): void {
+	if (!isBridgeProtocolCompatible(status.protocolVersion, status.minProtocolVersion)) {
+		throw new Error(formatBridgeProtocolMismatch("server", status.protocolVersion, status.minProtocolVersion));
+	}
+	if (status.extension.connected && typeof status.extension.protocolVersion === "number") {
+		if (!isBridgeProtocolCompatible(status.extension.protocolVersion, status.extension.protocolVersion)) {
+			throw new Error(
+				formatBridgeProtocolMismatch(
+					"extension",
+					status.extension.protocolVersion,
+					status.extension.protocolVersion,
+				),
+			);
+		}
+	}
+}
+
 /**
  * Poll the bridge's /status endpoint until the extension has registered, or
  * the timeout elapses. Returns `true` when the extension is connected.
@@ -1151,7 +1265,7 @@ Usage:
   shuvgeist switch <tabId> [--json] [--timeout 60s]
   shuvgeist repl <code> [--tab-id N] [--frame-id N] [--json] [--write-files <dir>] [--timeout 120s]
   shuvgeist repl -f <file.js> [--tab-id N] [--frame-id N] [--json] [--write-files <dir>] [--timeout 120s]
-  shuvgeist screenshot [--out file.png] [--max-width N] [--no-viewport-json] [--json] [--timeout 120s]
+  shuvgeist screenshot [--out file.png] [--tab-id N] [--max-width N] [--no-viewport-json] [--json] [--timeout 120s]
   shuvgeist eval <code> [--tab-id N] [--frame-id N] [--json] [--timeout 120s]
   shuvgeist cookies [--json] [--timeout 120s]
   shuvgeist select <message> [--json] [--timeout none]
@@ -1165,6 +1279,7 @@ Usage:
   shuvgeist device <emulate|reset> [...] [--json]
   shuvgeist perf <metrics|trace-start|trace-stop> [...] [--json]
   shuvgeist record start --out file.webm [--tab-id N] [--max-duration 30s]
+                         [--fps N] [--quality N] [--max-width N] [--max-height N]
                          [--video-bitrate N] [--mime-type video/webm;codecs=vp9]
   shuvgeist record stop [--tab-id N] [--json]
   shuvgeist record status [--tab-id N] [--json]
@@ -1203,8 +1318,10 @@ Global options:
   --user-agent <ua>   Override user agent
   --auto-stop <ms>    Perf trace auto-stop window
   --max-duration <v>  Recording duration (e.g. 30s, 30000ms, max 120s)
-  --video-bitrate <n> Recording videoBitsPerSecond
-  --mime-type <type>  Recording MediaRecorder mime type
+  --fps <n>           Recording frames per second (1-30)
+  --quality <n>       Recording JPEG quality (1-100)
+  --video-bitrate <n> Recording encoder video bitrate
+  --mime-type <type>  Recording WebM mime type
   --user-data-dir <path>     Launch: explicit Chromium user-data-dir
                              (default: ~/.shuvgeist/profile/<browser>)
   --use-default-profile      Launch: share the user's existing browser profile
@@ -1292,6 +1409,7 @@ async function main(): Promise<void> {
 		else if (arg === "--timeout" && i + 1 < rest.length) globalFlags.timeout = rest[++i];
 		else if (arg === "--out" && i + 1 < rest.length) globalFlags.out = rest[++i];
 		else if (arg === "--max-width" && i + 1 < rest.length) globalFlags.maxWidth = rest[++i];
+		else if (arg === "--max-height" && i + 1 < rest.length) globalFlags.maxHeight = rest[++i];
 		else if (arg === "--write-files" && i + 1 < rest.length) globalFlags.writeFiles = rest[++i];
 		else if (arg === "--last" && i + 1 < rest.length) globalFlags.last = rest[++i];
 		else if (arg === "--role" && i + 1 < rest.length) globalFlags.role = rest[++i];
@@ -1316,6 +1434,8 @@ async function main(): Promise<void> {
 		else if (arg === "--user-agent" && i + 1 < rest.length) globalFlags.userAgent = rest[++i];
 		else if (arg === "--auto-stop" && i + 1 < rest.length) globalFlags.autoStop = rest[++i];
 		else if (arg === "--max-duration" && i + 1 < rest.length) globalFlags.maxDuration = rest[++i];
+		else if (arg === "--fps" && i + 1 < rest.length) globalFlags.fps = rest[++i];
+		else if (arg === "--quality" && i + 1 < rest.length) globalFlags.quality = rest[++i];
 		else if (arg === "--video-bitrate" && i + 1 < rest.length) globalFlags.videoBitrate = rest[++i];
 		else if (arg === "--mime-type" && i + 1 < rest.length) globalFlags.mimeType = rest[++i];
 		else if (arg === "--browser" && i + 1 < rest.length) globalFlags.browser = rest[++i];
@@ -1358,6 +1478,8 @@ async function main(): Promise<void> {
 			await waitForExtensionConnection(statusUrl, EXTENSION_CONNECT_WAIT_MS, {
 				silent: flags.json === true,
 			});
+			const status = await fetchStatusSnapshot(statusUrl);
+			if (status) assertBridgeStatusProtocol(status);
 		}
 	}
 

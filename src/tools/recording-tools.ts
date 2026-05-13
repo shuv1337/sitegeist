@@ -1,12 +1,6 @@
-import type {
-	BridgeRecordStartResponse,
-	BridgeRecordStopResponse,
-	BridgeToOffscreenMessage,
-	OffscreenToBackgroundMessage,
-} from "../bridge/internal-messages.js";
 import {
 	BridgeDefaults,
-	type RecordChunkEventData,
+	type RecordFrameEventData,
 	type RecordOutcome,
 	type RecordStartParams,
 	type RecordStartResult,
@@ -17,6 +11,23 @@ import {
 } from "../bridge/protocol.js";
 import type { BridgeTelemetry, BridgeTelemetrySpan, TraceContext } from "../bridge/telemetry.js";
 import { resolveTabTarget } from "./helpers/browser-target.js";
+import type { DebuggerManager } from "./helpers/debugger-manager.js";
+
+interface ScreencastFrameMetadata {
+	timestamp?: number;
+	deviceWidth?: number;
+	deviceHeight?: number;
+	pageScaleFactor?: number;
+	offsetTop?: number;
+	scrollOffsetX?: number;
+	scrollOffsetY?: number;
+}
+
+interface ScreencastFrameParams {
+	data?: unknown;
+	sessionId?: unknown;
+	metadata?: ScreencastFrameMetadata;
+}
 
 interface RecordingState {
 	recordingId: string;
@@ -26,25 +37,32 @@ interface RecordingState {
 	mimeType: string;
 	videoBitsPerSecond?: number;
 	maxDurationMs: number;
-	sizeBytes: number;
-	chunkCount: number;
+	owner: string;
+	format: "jpeg";
+	fps: number;
+	quality: number;
+	maxWidth?: number;
+	maxHeight?: number;
+	everyNthFrame: number;
+	sourceBytes: number;
+	frameCount: number;
 	lastError?: string;
 	outcome?: RecordOutcome;
 	stopping: boolean;
+	screencastActive: boolean;
+	removeListener?: () => void;
+	removeDetachListener?: () => void;
 	maxDurationTimer?: ReturnType<typeof setTimeout>;
 	forceStopTimer?: ReturnType<typeof setTimeout>;
 	resolveCompletion: (result: RecordStopResult) => void;
-	rejectCompletion: (error: Error) => void;
 	completion: Promise<RecordStopResult>;
 	span?: BridgeTelemetrySpan;
 }
 
 export interface RecordingToolsOptions {
 	windowId: number;
-	ensureOffscreenDocument: () => Promise<void>;
-	getOffscreenTabId: () => Promise<number | undefined>;
-	sendToOffscreen: <T>(message: BridgeToOffscreenMessage) => Promise<T | null>;
-	emitRecordChunk: (data: RecordChunkEventData) => void;
+	debuggerManager: DebuggerManager;
+	emitRecordFrame: (data: RecordFrameEventData) => void;
 	telemetry?: BridgeTelemetry;
 }
 
@@ -74,6 +92,10 @@ function assertDurationAllowed(maxDurationMs: number): void {
 	}
 }
 
+function normalizeInteger(value: number | undefined, fallback: number): number {
+	return Number.isFinite(value) ? Math.trunc(value as number) : fallback;
+}
+
 export function assertRecordableTabUrl(url?: string): void {
 	let protocol = "";
 	try {
@@ -82,7 +104,7 @@ export function assertRecordableTabUrl(url?: string): void {
 		protocol = "";
 	}
 	if (DISALLOWED_SCHEMES.includes(protocol)) {
-		throw new Error(`Cannot record ${url}. tabCapture does not support internal or extension pages.`);
+		throw new Error(`Cannot record ${url}. Chrome debugger screencast does not support internal or extension pages.`);
 	}
 }
 
@@ -90,18 +112,14 @@ export class RecordingTools {
 	private readonly recordingsByTabId = new Map<number, RecordingState>();
 	private readonly recordingsById = new Map<string, RecordingState>();
 	private readonly windowId: number;
-	private readonly ensureOffscreenDocument: () => Promise<void>;
-	private readonly getOffscreenTabId: () => Promise<number | undefined>;
-	private readonly sendToOffscreen: <T>(message: BridgeToOffscreenMessage) => Promise<T | null>;
-	private readonly emitRecordChunk: (data: RecordChunkEventData) => void;
+	private readonly debuggerManager: DebuggerManager;
+	private readonly emitRecordFrame: (data: RecordFrameEventData) => void;
 	private readonly telemetry?: BridgeTelemetry;
 
 	constructor(options: RecordingToolsOptions) {
 		this.windowId = options.windowId;
-		this.ensureOffscreenDocument = options.ensureOffscreenDocument;
-		this.getOffscreenTabId = options.getOffscreenTabId;
-		this.sendToOffscreen = options.sendToOffscreen;
-		this.emitRecordChunk = options.emitRecordChunk;
+		this.debuggerManager = options.debuggerManager;
+		this.emitRecordFrame = options.emitRecordFrame;
 		this.telemetry = options.telemetry;
 	}
 
@@ -113,44 +131,48 @@ export class RecordingTools {
 		const maxDurationMs = params.maxDurationMs ?? BridgeDefaults.RECORD_DEFAULT_MAX_DURATION_MS;
 		assertDurationAllowed(maxDurationMs);
 
-		const resolved = await resolveTabTarget({ windowId: this.windowId, tabId: params.tabId });
+		const resolved = await resolveTabTarget({ windowId: params.windowId ?? this.windowId, tabId: params.tabId });
 		const tab = resolved.tab;
 		const tabId = resolved.tabId;
 		if (this.recordingsByTabId.has(tabId)) {
 			throw new Error(`Recording is already active for tab ${tabId}`);
 		}
-		await this.assertTabIsFocused(tab);
 		assertRecordableTabUrl(tab.url);
 		if (signal?.aborted) {
 			throw new Error("Recording start aborted");
 		}
 
-		await this.ensureOffscreenDocument();
-		const consumerTabId = await this.getOffscreenTabId();
 		const recordingId = createRecordingId(tabId);
-		const streamIdOptions: chrome.tabCapture.GetMediaStreamOptions =
-			typeof consumerTabId === "number" ? { targetTabId: tabId, consumerTabId } : { targetTabId: tabId };
-		const streamId = await chrome.tabCapture.getMediaStreamId(streamIdOptions);
-		const startedAtMs = Date.now();
+		const fps = normalizeInteger(params.fps, BridgeDefaults.RECORD_DEFAULT_FPS);
+		const quality = normalizeInteger(params.quality, BridgeDefaults.RECORD_DEFAULT_JPEG_QUALITY);
+		const maxWidth = normalizeInteger(params.maxWidth, BridgeDefaults.RECORD_DEFAULT_MAX_WIDTH);
+		const maxHeight = typeof params.maxHeight === "number" ? normalizeInteger(params.maxHeight, 0) : undefined;
+		const everyNthFrame = normalizeInteger(params.everyNthFrame, 1);
+		const owner = `record-screencast:${tabId}`;
 		let resolveCompletion!: (result: RecordStopResult) => void;
-		let rejectCompletion!: (error: Error) => void;
-		const completion = new Promise<RecordStopResult>((resolve, reject) => {
+		const completion = new Promise<RecordStopResult>((resolve) => {
 			resolveCompletion = resolve;
-			rejectCompletion = reject;
 		});
 		const state: RecordingState = {
 			recordingId,
 			tabId,
-			startedAtMs,
-			startedAt: new Date(startedAtMs).toISOString(),
+			startedAtMs: Date.now(),
+			startedAt: "",
 			mimeType: params.mimeType ?? "video/webm",
 			videoBitsPerSecond: params.videoBitsPerSecond,
 			maxDurationMs,
-			sizeBytes: 0,
-			chunkCount: 0,
+			owner,
+			format: "jpeg",
+			fps,
+			quality,
+			maxWidth,
+			maxHeight,
+			everyNthFrame,
+			sourceBytes: 0,
+			frameCount: 0,
 			stopping: false,
+			screencastActive: false,
 			resolveCompletion,
-			rejectCompletion,
 			completion,
 			span: this.telemetry?.startSpan("record.session", {
 				parent: traceContext,
@@ -162,45 +184,59 @@ export class RecordingTools {
 					"record.mime_type": params.mimeType,
 					"record.codec": params.mimeType ? codecFromMimeType(params.mimeType) : undefined,
 					"record.video_bits_per_second": params.videoBitsPerSecond,
+					"record.fps": fps,
+					"record.quality": quality,
+					"record.max_width": maxWidth,
+					"record.max_height": maxHeight,
 				},
 			}),
 		};
+		state.startedAt = new Date(state.startedAtMs).toISOString();
 		this.recordingsByTabId.set(tabId, state);
 		this.recordingsById.set(recordingId, state);
 
 		try {
-			const response = await this.sendToOffscreen<BridgeRecordStartResponse>({
-				type: "bridge-record-start",
-				recordingId,
-				streamId,
-				mimeType: params.mimeType,
-				videoBitsPerSecond: params.videoBitsPerSecond,
-				timesliceMs: BridgeDefaults.RECORD_TIMESLICE_MS,
+			await this.debuggerManager.acquireWithTrace(tabId, owner, {
+				parent: state.span?.context,
+				operationName: "record.debugger.acquire",
+				attributes: { "record.recording_id": recordingId },
 			});
-			if (!response?.ok) {
-				throw new Error(response?.error || "Offscreen recorder did not start");
-			}
-			state.mimeType = response.mimeType;
-			state.videoBitsPerSecond = response.videoBitsPerSecond ?? state.videoBitsPerSecond;
-			state.span?.setAttributes({
-				"record.mime_type": state.mimeType,
-				"record.codec": codecFromMimeType(state.mimeType),
-				"record.video_bits_per_second": state.videoBitsPerSecond,
+			await this.debuggerManager.ensureDomainWithTrace(tabId, "Page", {
+				parent: state.span?.context,
+				operationName: "record.debugger.page_enable",
+				attributes: { "record.recording_id": recordingId },
 			});
+			state.removeListener = this.debuggerManager.addEventListener(tabId, (method, frameParams) => {
+				void this.handleDebuggerEvent(state, method, frameParams).catch((error) => this.forceStop(state, error));
+			});
+			state.removeDetachListener = this.debuggerManager.addDetachListener(tabId, ({ reason }) => {
+				state.lastError = `Debugger detached: ${String(reason)}`;
+				state.span?.recordError(new Error(state.lastError));
+				this.forceStop(state, state.lastError, { releaseDebugger: false });
+			});
+			const startParams: Record<string, unknown> = {
+				format: state.format,
+				quality: state.quality,
+				maxWidth: state.maxWidth,
+				everyNthFrame: state.everyNthFrame,
+			};
+			if (typeof state.maxHeight === "number" && state.maxHeight > 0) startParams.maxHeight = state.maxHeight;
+			await this.debuggerManager.sendCommandWithTrace(tabId, "Page.startScreencast", startParams, {
+				parent: state.span?.context,
+				operationName: "record.screencast.start",
+				attributes: { "record.recording_id": recordingId },
+			});
+			state.screencastActive = true;
 			state.maxDurationTimer = setTimeout(() => {
 				void this.stopRecording(state, "stopped_max_duration").catch((error) => this.forceStop(state, error));
 			}, maxDurationMs);
 		} catch (error) {
-			this.recordingsByTabId.delete(tabId);
-			this.recordingsById.delete(recordingId);
+			this.cleanupState(state, { releaseDebugger: true });
 			state.span?.recordError(error);
 			state.span?.end("error");
 			throw error;
 		}
 
-		// Chrome tabCapture streams continue across same-tab navigations. We keep
-		// recording until an explicit stop, the configured duration/byte ceiling, or
-		// tab closure rather than treating navigation as an implicit stop.
 		return {
 			ok: true,
 			recordingId,
@@ -240,7 +276,8 @@ export class RecordingTools {
 				"record.mime_type": result.mimeType,
 				"record.codec": codecFromMimeType(result.mimeType),
 				"record.size_bytes": result.sizeBytes,
-				"record.chunk_count": result.chunkCount,
+				"record.source_bytes": result.sourceBytes,
+				"record.frame_count": result.frameCount,
 				"record.outcome": result.outcome,
 			});
 			span?.end("ok");
@@ -274,7 +311,11 @@ export class RecordingTools {
 				startedAt: state.startedAt,
 				mimeType: state.mimeType,
 				durationMs: Date.now() - state.startedAtMs,
-				sizeBytes: state.sizeBytes,
+				sizeBytes: state.sourceBytes,
+				sourceBytes: state.sourceBytes,
+				chunkCount: state.frameCount,
+				frameCount: state.frameCount,
+				fps: state.fps,
 				lastError: state.lastError,
 			};
 			span?.setAttributes({
@@ -282,8 +323,8 @@ export class RecordingTools {
 				"record.tab_id": state.tabId,
 				"record.duration_ms": result.durationMs,
 				"record.mime_type": state.mimeType,
-				"record.size_bytes": state.sizeBytes,
-				"record.chunk_count": state.chunkCount,
+				"record.source_bytes": state.sourceBytes,
+				"record.frame_count": state.frameCount,
 			});
 			span?.end("ok");
 			return result;
@@ -306,22 +347,6 @@ export class RecordingTools {
 		return Array.from(this.recordingsByTabId.keys());
 	}
 
-	handleOffscreenMessage(message: OffscreenToBackgroundMessage): void {
-		const state = this.recordingsById.get(message.recordingId);
-		if (!state) return;
-		if (message.type === "record-chunk") {
-			this.handleChunk(state, message);
-			return;
-		}
-		if (message.type === "record-error") {
-			state.lastError = message.message;
-			state.span?.recordError(new Error(message.message));
-			void this.stopRecording(state, "stopped_error").catch((error) => this.forceStop(state, error));
-			return;
-		}
-		this.finishRecording(state, state.outcome ?? message.outcome, message.endedAt);
-	}
-
 	handleTabClosed(tabId: number): void {
 		const state = this.recordingsByTabId.get(tabId);
 		if (!state) return;
@@ -341,46 +366,46 @@ export class RecordingTools {
 		}
 	}
 
-	private async assertTabIsFocused(tab: chrome.tabs.Tab): Promise<void> {
-		if (!tab.id || typeof tab.windowId !== "number") {
-			throw new Error("Target tab is not in a tabbed browser window");
-		}
-		const [activeTab] = await chrome.tabs.query({ active: true, windowId: tab.windowId });
-		if (activeTab?.id !== tab.id || tab.active !== true) {
-			throw new Error("tabCapture requires the target tab to be active in its window");
-		}
-	}
-
-	private handleChunk(
+	private async handleDebuggerEvent(
 		state: RecordingState,
-		message: Extract<OffscreenToBackgroundMessage, { type: "record-chunk" }>,
-	): void {
-		const bytes = base64ByteLength(message.chunkBase64);
-		const seq = state.chunkCount;
-		state.sizeBytes += bytes;
-		state.chunkCount += 1;
+		method: string,
+		params: Record<string, unknown> | undefined,
+	): Promise<void> {
+		if (method !== "Page.screencastFrame") return;
+		const frame = (params ?? {}) as ScreencastFrameParams;
+		if (typeof frame.sessionId === "number") {
+			await this.debuggerManager.sendCommand(state.tabId, "Page.screencastFrameAck", { sessionId: frame.sessionId });
+		}
+		if (typeof frame.data !== "string" || typeof frame.sessionId !== "number") {
+			return;
+		}
+		const bytes = base64ByteLength(frame.data);
+		const seq = state.frameCount;
+		state.sourceBytes += bytes;
+		state.frameCount += 1;
+		const capturedAtMs = Date.now();
 		this.telemetry
-			?.startSpan("record.chunk", {
+			?.startSpan("record.frame", {
 				parent: state.span?.context,
 				attributes: {
 					"record.recording_id": state.recordingId,
 					"record.tab_id": state.tabId,
 					"record.seq": seq,
-					"record.chunk_bytes": bytes,
-					"record.chunk_final": message.final === true,
+					"record.frame_bytes": bytes,
 				},
 			})
 			.end("ok");
-		this.emitRecordChunk({
+		this.emitRecordFrame({
 			recordingId: state.recordingId,
 			tabId: state.tabId,
 			seq,
-			mimeType: message.mimeType || state.mimeType,
-			chunkBase64: message.chunkBase64,
-			final: message.final,
+			format: state.format,
+			dataBase64: frame.data,
+			capturedAtMs,
+			metadata: frame.metadata,
 		});
-		if (state.sizeBytes >= BridgeDefaults.RECORD_HARD_MAX_BYTES && !state.stopping) {
-			void this.stopRecording(state, "stopped_max_bytes").catch((error) => this.forceStop(state, error));
+		if (state.sourceBytes >= BridgeDefaults.RECORD_HARD_MAX_BYTES && !state.stopping) {
+			await this.stopRecording(state, "stopped_max_bytes");
 		}
 	}
 
@@ -389,33 +414,65 @@ export class RecordingTools {
 			state.stopping = true;
 			state.outcome = outcome;
 			clearTimeout(state.maxDurationTimer);
-			const response = await this.sendToOffscreen<BridgeRecordStopResponse>({
-				type: "bridge-record-stop",
-				recordingId: state.recordingId,
-				outcome,
-			});
-			if (response && !response.ok) {
-				state.lastError = response.error;
+			try {
+				if (state.screencastActive) {
+					await this.debuggerManager.sendCommandWithTrace(state.tabId, "Page.stopScreencast", undefined, {
+						parent: state.span?.context,
+						operationName: "record.screencast.stop",
+						attributes: { "record.recording_id": state.recordingId, "record.outcome": outcome },
+					});
+					state.screencastActive = false;
+				}
+			} catch (error) {
+				state.lastError = error instanceof Error ? error.message : String(error);
+				state.span?.recordError(error);
 			}
-			state.forceStopTimer = setTimeout(() => this.forceStop(state), 5000);
+			state.removeListener?.();
+			state.removeListener = undefined;
+			state.removeDetachListener?.();
+			state.removeDetachListener = undefined;
+			await this.debuggerManager.release(state.tabId, state.owner);
+			this.finishRecording(state, outcome, Date.now(), { releaseDebugger: false });
 		}
 		return state.completion;
 	}
 
-	private forceStop(state: RecordingState, error?: unknown): void {
+	private forceStop(
+		state: RecordingState,
+		error?: unknown,
+		options: { releaseDebugger?: boolean } = { releaseDebugger: true },
+	): void {
 		if (error) {
 			state.lastError = error instanceof Error ? error.message : String(error);
 			state.span?.recordError(error);
 		}
-		this.finishRecording(state, state.outcome ?? "stopped_error", Date.now());
+		this.finishRecording(state, state.outcome ?? "stopped_error", Date.now(), options);
 	}
 
-	private finishRecording(state: RecordingState, outcome: RecordOutcome, endedAtMs: number): void {
-		if (!this.recordingsById.has(state.recordingId)) return;
+	private cleanupState(state: RecordingState, options: { releaseDebugger?: boolean }): void {
 		clearTimeout(state.maxDurationTimer);
 		clearTimeout(state.forceStopTimer);
+		state.removeListener?.();
+		state.removeListener = undefined;
+		state.removeDetachListener?.();
+		state.removeDetachListener = undefined;
 		this.recordingsByTabId.delete(state.tabId);
 		this.recordingsById.delete(state.recordingId);
+		if (options.releaseDebugger !== false) {
+			void this.debuggerManager.release(state.tabId, state.owner).catch((error) => {
+				state.lastError = error instanceof Error ? error.message : String(error);
+			});
+		}
+	}
+
+	private finishRecording(
+		state: RecordingState,
+		outcome: RecordOutcome,
+		endedAtMs: number,
+		options: { releaseDebugger?: boolean } = { releaseDebugger: true },
+	): void {
+		if (!this.recordingsById.has(state.recordingId)) return;
+		this.cleanupState(state, options);
 		const result: RecordStopResult = {
 			ok: true,
 			recordingId: state.recordingId,
@@ -424,8 +481,10 @@ export class RecordingTools {
 			endedAt: new Date(endedAtMs).toISOString(),
 			durationMs: endedAtMs - state.startedAtMs,
 			mimeType: state.mimeType,
-			sizeBytes: state.sizeBytes,
-			chunkCount: state.chunkCount,
+			sizeBytes: state.sourceBytes,
+			sourceBytes: state.sourceBytes,
+			chunkCount: state.frameCount,
+			frameCount: state.frameCount,
 			outcome,
 		};
 		state.span?.setAttributes({
@@ -433,17 +492,18 @@ export class RecordingTools {
 			"record.mime_type": state.mimeType,
 			"record.codec": codecFromMimeType(state.mimeType),
 			"record.video_bits_per_second": state.videoBitsPerSecond,
-			"record.size_bytes": state.sizeBytes,
-			"record.chunk_count": state.chunkCount,
+			"record.source_bytes": state.sourceBytes,
+			"record.frame_count": state.frameCount,
 			"record.outcome": outcome,
 		});
 		state.span?.end(outcome === "stopped_error" ? "error" : "ok");
-		this.emitRecordChunk({
+		this.emitRecordFrame({
 			recordingId: state.recordingId,
 			tabId: state.tabId,
-			seq: state.chunkCount,
-			mimeType: state.mimeType,
-			chunkBase64: "",
+			seq: state.frameCount,
+			format: state.format,
+			dataBase64: "",
+			capturedAtMs: endedAtMs,
 			final: true,
 			summary: result,
 		});
