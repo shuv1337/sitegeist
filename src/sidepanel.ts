@@ -1080,6 +1080,14 @@ const createAgent = async (initialState?: Partial<AgentState>, shouldSave = true
 					event: "session_run_state",
 					data: { sessionId: currentSessionId, state: "idle" },
 				});
+				void agent
+					.waitForIdle()
+					.then(() => {
+						chatPanel.agentInterface?.requestUpdate();
+						emitSessionChanged();
+						renderApp();
+					})
+					.catch((err) => console.error("Failed to refresh after agent idle:", err));
 			}
 
 			if (event.type === "message_end") {
